@@ -1,15 +1,17 @@
 /**
- * 动态装饰 + 生日提醒模块
- * 独立运行，不修改原有业务逻辑
+ * Angela专属悬浮面板（新增模块，不影响原有业务代码）
+ * 板块1: 玉桂狗/哆啦A梦/波妞 卡通贴纸动画
+ * 板块2: 时段自动切换问候语
+ * 板块3: 当月简易日历（含生日标记）
+ * 附加: 生日定时提醒弹窗（保留原有农历生日功能）
  */
 (function () {
   'use strict';
 
-  var STORAGE_KEY = 'decoration_module_enabled';
-  var LAST_SHOWN_KEY = 'decoration_last_shown_date';
+  var PANEL_MIN_KEY = 'angela_panel_minimized';
+  var BDAY_POPUP_KEY = 'angela_bday_popup_';
 
-  /* ========== 农历转换算法 ========== */
-  // 农历数据表 1900-2100，每年用十六进制编码
+  /* ========== 农历转换算法（保留原有生日提醒依赖） ========== */
   var LUNAR_INFO = [
     0x04bd8,0x04ae0,0x0a570,0x054d5,0x0d260,0x0d950,0x16554,0x056a0,0x09ad0,0x055d2,
     0x04ae0,0x0a5b6,0x0a4d0,0x0d250,0x1d255,0x0b540,0x0d6a0,0x0ada2,0x095b0,0x14977,
@@ -36,478 +38,403 @@
 
   function lYearDays(y) {
     var sum = 348;
-    for (var i = 0x8000; i > 0x8; i >>= 1) {
-      sum += (LUNAR_INFO[y - 1900] & i) ? 1 : 0;
-    }
+    for (var i = 0x8000; i > 0x8; i >>= 1) sum += (LUNAR_INFO[y - 1900] & i) ? 1 : 0;
     return sum + leapDays(y);
   }
-
-  function leapMonth(y) {
-    return LUNAR_INFO[y - 1900] & 0xf;
-  }
-
+  function leapMonth(y) { return LUNAR_INFO[y - 1900] & 0xf; }
   function leapDays(y) {
-    if (leapMonth(y)) {
-      return (LUNAR_INFO[y - 1900] & 0x10000) ? 30 : 29;
-    }
+    if (leapMonth(y)) return (LUNAR_INFO[y - 1900] & 0x10000) ? 30 : 29;
     return 0;
   }
+  function monthDays(y, m) { return (LUNAR_INFO[y - 1900] & (0x10000 >> m)) ? 30 : 29; }
 
-  function monthDays(y, m) {
-    return (LUNAR_INFO[y - 1900] & (0x10000 >> m)) ? 30 : 29;
-  }
-
-  /**
-   * 农历转公历
-   * @param {number} year 公历年份
-   * @param {number} lunarMonth 农历月 (1-12)
-   * @param {number} lunarDay 农历日 (1-30)
-   * @returns {Date} 公历日期
-   */
   function lunarToSolar(year, lunarMonth, lunarDay) {
-    var offset = 0;
-    var i, temp;
-    for (i = 1900; i < year && i < 2100; i++) {
-      offset += lYearDays(i);
-    }
-    var leap = leapMonth(year);
-    var isLeap = false;
+    var offset = 0, i, temp;
+    for (i = 1900; i < year && i < 2100; i++) offset += lYearDays(i);
+    var leap = leapMonth(year), isLeap = false;
     for (i = 1; i < lunarMonth; i++) {
-      if (leap > 0 && i === leap + 1 && !isLeap) {
-        isLeap = true;
-        i--;
-        continue;
-      }
+      if (leap > 0 && i === leap + 1 && !isLeap) { isLeap = true; i--; continue; }
       if (isLeap && i === leap + 1) isLeap = false;
       offset += isLeap ? leapDays(year) : monthDays(year, i);
     }
     offset += lunarDay - 1;
-    var baseDate = new Date(1900, 0, 31);
-    var solarDate = new Date(baseDate.getTime() + offset * 86400000);
-    return solarDate;
+    return new Date(new Date(1900, 0, 31).getTime() + offset * 86400000);
   }
 
-  /* ========== 节日数据 ========== */
-  // 阳历节日 {month-day: {name, greeting, sticker}}
-  var SOLAR_HOLIDAYS = {
-    '1-1': { name: '元旦', greeting: '新年快乐！新的一年，万事顺意，生意兴隆！', sticker: '🎉' },
-    '2-14': { name: '情人节', greeting: '情人节快乐！愿你被温柔以待，今天也要元气满满！', sticker: '💝' },
-    '3-8': { name: '妇女节', greeting: '女神节快乐！愿你独立自信，光芒万丈！', sticker: '🌸' },
-    '5-1': { name: '劳动节', greeting: '劳动节快乐！辛苦了，今天记得好好休息一下！', sticker: '🌻' },
-    '6-1': { name: '儿童节', greeting: '儿童节快乐！愿你永远保持一颗童心！', sticker: '🎈' },
-    '10-1': { name: '国庆节', greeting: '国庆快乐！山河壮丽，国泰民安！', sticker: '🇨🇳' },
-    '12-25': { name: '圣诞节', greeting: '圣诞快乐！愿温暖和幸福围绕着你！', sticker: '🎄' },
-    '12-31': { name: '跨年夜', greeting: '跨年快乐！新的一年，新的开始，一起加油！', sticker: '🎆' }
-  };
+  function solarToLunarInfo(date) {
+    var offset = Math.floor((date.getTime() - new Date(1900, 0, 31).getTime()) / 86400000);
+    var i, temp = 0, year = 1900;
+    for (i = 1900; i < 2100 && offset > 0; i++) { temp = lYearDays(i); offset -= temp; year++; }
+    if (offset < 0) { offset += temp; year--; }
+    var leap = leapMonth(year), isLeap = false, month = 1;
+    for (i = 1; i < 13 && offset > 0; i++) {
+      if (leap > 0 && i === leap + 1 && !isLeap) { isLeap = true; i--; continue; }
+      if (isLeap && i === leap + 1) isLeap = false;
+      temp = isLeap ? leapDays(year) : monthDays(year, i);
+      offset -= temp; month++;
+    }
+    if (offset < 0) { offset += temp; month--; }
+    if (offset === 0 && leap > 0 && month === leap + 1) {
+      if (isLeap) { isLeap = false; } else { isLeap = true; month--; }
+    }
+    return { year: year, month: month, day: offset + 1, isLeap: isLeap };
+  }
 
-  // 农历节日 {lunarMonth-lunarDay: {name, greeting, sticker}}
-  var LUNAR_HOLIDAYS = {
-    '1-1': { name: '春节', greeting: '春节快乐！爆竹声中一岁除，春风送暖入屠苏。新春大吉！', sticker: '🧧' },
-    '1-15': { name: '元宵节', greeting: '元宵节快乐！团团圆圆，甜甜蜜蜜！', sticker: '🏮' },
-    '5-5': { name: '端午节', greeting: '端午安康！粽叶飘香，愿你平安喜乐！', sticker: '🐲' },
-    '7-7': { name: '七夕节', greeting: '七夕快乐！愿有情人终成眷属，浪漫满屋！', sticker: '🦋' },
-    '8-15': { name: '中秋节', greeting: '中秋快乐！月圆人团圆，幸福美满！', sticker: '🌕' },
-    '9-9': { name: '重阳节', greeting: '重阳安康！登高望远，福寿绵长！', sticker: '🍁' },
-    '12-8': { name: '腊八节', greeting: '腊八快乐！过了腊八就是年，记得喝碗腊八粥！', sticker: '🥣' }
-  };
-
-  /* ========== 生日档案 ========== */
-  // 固定生日档案，每年循环生效
+  /* ========== 生日档案（保留原有数据） ========== */
   var BIRTHDAY_ARCHIVE = [
-    { type: 'lunar', month: 3, day: 27, name: '生日（农历三月廿七）', label: '农历三月廿七' },
-    { type: 'lunar', month: 5, day: 18, name: '生日（农历五月十八）', label: '农历五月十八' },
-    { type: 'lunar', month: 6, day: 18, name: '生日（农历六月十八）', label: '农历六月十八' },
-    { type: 'solar', month: 10, day: 30, name: '生日（阳历10月30日）', label: '阳历10月30日' }
+    { type: 'lunar', month: 3, day: 27, label: '农历三月廿七' },
+    { type: 'lunar', month: 5, day: 18, label: '农历五月十八' },
+    { type: 'lunar', month: 6, day: 18, label: '农历六月十八' },
+    { type: 'solar', month: 10, day: 30, label: '阳历10月30日' }
   ];
 
-  /* ========== 每日贴纸 & 问候语 ========== */
-  var DAILY_STICKERS = [
-    '🐱', '🐰', '🐻', '🐼', '🦊', '🐨', '🐯', '🦁', '🐸', '🐵',
-    '🦄', '🐧', '🐦', '🐹', '🐶', '🦝', '🐙', '🦋', '🌸', '🌻',
-    '🍀', '⭐', '🌙', '☁️', '🌈', '🍉', '🍓', '🍑', '🧁', '🍰'
-  ];
+  /* ========== 节日数据（阳历 + 农历） ========== */
+  var SOLAR_HOLIDAYS = {
+    '1-1': '元旦', '2-14': '情人节', '3-8': '妇女节', '5-1': '劳动节',
+    '6-1': '儿童节', '10-1': '国庆节', '12-25': '圣诞节', '12-31': '跨年夜'
+  };
+  var LUNAR_HOLIDAYS = {
+    '1-1': '春节', '1-15': '元宵节', '5-5': '端午节', '7-7': '七夕节',
+    '8-15': '中秋节', '9-9': '重阳节', '12-8': '腊八节'
+  };
 
-  var DAILY_GREETINGS = [
-    '今天也是元气满满的一天，加油呀！',
-    '每一个清晨都值得微笑，早安！',
-    '认真工作的你，真的很闪闪发光呢～',
-    '今天的你，依然很棒！别忘了休息哦～',
-    '生活明朗，万物可爱，人间值得～',
-    '愿你今天遇见所有美好！',
-    '把今天过好，就是最好的生活～',
-    '今日份的快乐已送达，请签收！',
-    '工作再忙，也要记得喝水哦～',
-    '你的努力，时间都看得见！',
-    '愿今天一切顺利，心想事成～',
-    '保持热爱，奔赴山海，加油！',
-    '今天也要做个快乐的打工人～',
-    '世界很大，幸福很小，愿你在当下～',
-    '生活有点苦，但你很甜呀～',
-    '今天的阳光和你一样温暖呢～',
-    '愿你的每一份付出都有回报！',
-    '累了就歇会儿，别太拼了哦～',
-    '你的笑容是最好的装饰，今天也请保持微笑～',
-    '万事胜意，一切都在慢慢变好～'
-  ];
+  function getHolidayKey(date) {
+    var solarKey = (date.getMonth() + 1) + '-' + date.getDate();
+    if (SOLAR_HOLIDAYS[solarKey]) return SOLAR_HOLIDAYS[solarKey];
+    var lunar = solarToLunarInfo(date);
+    var lunarKey = lunar.month + '-' + lunar.day;
+    if (LUNAR_HOLIDAYS[lunarKey]) return LUNAR_HOLIDAYS[lunarKey];
+    return null;
+  }
 
   /* ========== 工具函数 ========== */
+  function esc(text) {
+    return String(text == null ? '' : text).replace(/[&<>"']/g, function (m) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
+    });
+  }
   function todayKey() {
     var d = new Date();
     return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
   }
 
-  function getDateKey(date) {
-    return date.getFullYear() + '-' + (date.getMonth() + 1) + '-' + date.getDate();
+  /* ========== 板块1: 卡通贴纸 SVG ========== */
+  // 玉桂狗 Cinnamoroll — 白色小狗，蓝色长耳
+  var STICKER_CINNAMOROLL =
+    '<svg width="56" height="56" viewBox="0 0 60 60">' +
+      '<ellipse cx="20" cy="8" rx="5" ry="12" fill="#B8D8F0" transform="rotate(-15 20 8)"/>' +
+      '<ellipse cx="40" cy="8" rx="5" ry="12" fill="#B8D8F0" transform="rotate(15 40 8)"/>' +
+      '<circle cx="30" cy="32" r="18" fill="#FFF8F0" stroke="#E8E4DE" stroke-width="1"/>' +
+      '<circle cx="24" cy="30" r="2" fill="#5B9BD5"/>' +
+      '<circle cx="36" cy="30" r="2" fill="#5B9BD5"/>' +
+      '<ellipse cx="30" cy="35" rx="2.5" ry="2" fill="#F4A261"/>' +
+      '<path d="M 27 36 Q 30 38 33 36" stroke="#E85D4E" stroke-width="1" fill="none" stroke-linecap="round"/>' +
+      '<circle cx="21" cy="35" r="2.5" fill="#FFC0CB" opacity="0.6"/>' +
+      '<circle cx="39" cy="35" r="2.5" fill="#FFC0CB" opacity="0.6"/>' +
+    '</svg>';
+
+  // 哆啦A梦 Doraemon — 蓝色圆脸
+  var STICKER_DORAEMON =
+    '<svg width="56" height="56" viewBox="0 0 60 60">' +
+      '<circle cx="30" cy="30" r="22" fill="#5BB5F0" stroke="#4A9FE0" stroke-width="1"/>' +
+      '<circle cx="30" cy="30" r="15" fill="#FFFFFF"/>' +
+      '<circle cx="24" cy="26" r="2.5" fill="#FFF"/>' +
+      '<circle cx="36" cy="26" r="2.5" fill="#FFF"/>' +
+      '<circle cx="24" cy="26" r="1.5" fill="#333"/>' +
+      '<circle cx="36" cy="26" r="1.5" fill="#333"/>' +
+      '<circle cx="30" cy="31" r="2.5" fill="#E85D4E"/>' +
+      '<path d="M 26 33 Q 30 36 34 33" stroke="#333" stroke-width="1" fill="none" stroke-linecap="round"/>' +
+      '<path d="M 30 33 L 30 37" stroke="#333" stroke-width="0.8"/>' +
+      '<ellipse cx="22" cy="34" rx="3" ry="2" fill="#FFC0CB" opacity="0.5"/>' +
+      '<ellipse cx="38" cy="34" rx="3" ry="2" fill="#FFC0CB" opacity="0.5"/>' +
+    '</svg>';
+
+  // 波妞 Ponyo — 红裙子小女孩
+  var STICKER_PONYO =
+    '<svg width="56" height="56" viewBox="0 0 60 60">' +
+      '<path d="M 18 16 Q 15 10 20 8 Q 25 6 24 12 Q 26 8 30 10 Q 34 8 36 12 Q 35 6 40 8 Q 45 10 42 16 Q 44 14 44 18 L 16 18 Q 16 14 18 16 Z" fill="#E85D4E"/>' +
+      '<circle cx="30" cy="30" r="15" fill="#FFDDD2" stroke="#E8D5CC" stroke-width="0.5"/>' +
+      '<circle cx="25" cy="29" r="1.8" fill="#333"/>' +
+      '<circle cx="35" cy="29" r="1.8" fill="#333"/>' +
+      '<circle cx="25.5" cy="28.5" r="0.6" fill="#fff"/>' +
+      '<circle cx="35.5" cy="28.5" r="0.6" fill="#fff"/>' +
+      '<path d="M 26 34 Q 30 37 34 34" stroke="#E85D4E" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
+      '<ellipse cx="22" cy="33" rx="2.5" ry="1.8" fill="#FF9999" opacity="0.4"/>' +
+      '<ellipse cx="38" cy="33" rx="2.5" ry="1.8" fill="#FF9999" opacity="0.4"/>' +
+      '<path d="M 22 42 Q 30 50 38 42 L 38 48 Q 30 54 22 48 Z" fill="#E85D4E" opacity="0.8"/>' +
+    '</svg>';
+
+  function renderStickers() {
+    var container = document.getElementById('angelaStickers');
+    if (!container) return;
+    container.innerHTML =
+      '<div class="angela-sticker-item">' + STICKER_CINNAMOROLL + '<span class="angela-sticker-sparkle">✨</span></div>' +
+      '<div class="angela-sticker-item">' + STICKER_DORAEMON + '<span class="angela-sticker-sparkle">⭐</span></div>' +
+      '<div class="angela-sticker-item">' + STICKER_PONYO + '<span class="angela-sticker-sparkle">💫</span></div>';
   }
 
-  // 种子随机：根据日期生成固定随机数，保证当天显示一致
-  function seededRandom(seed) {
-    var x = Math.sin(seed) * 10000;
-    return x - Math.floor(x);
+  /* ========== 板块2: 时段问候语 ========== */
+  function getTimeGreeting() {
+    var hour = new Date().getHours();
+    if (hour >= 6 && hour < 12) return { icon: '🌅', text: '早安，今日采购工作顺利' };
+    if (hour >= 12 && hour < 14) return { icon: '🍱', text: '午休愉快，劳逸结合' };
+    if (hour >= 14 && hour < 18) return { icon: '💪', text: '加油，高效处理单据与库存事务' };
+    return { icon: '🌙', text: '辛苦啦，记得适当休息放松' };
   }
 
-  function isEnabled() {
-    try {
-      return localStorage.getItem(STORAGE_KEY) !== 'false';
-    } catch (e) {
-      return true;
-    }
+  function renderGreeting() {
+    var container = document.getElementById('angelaGreeting');
+    if (!container) return;
+    var g = getTimeGreeting();
+    container.innerHTML =
+      '<span class="angela-greeting-icon">' + g.icon + '</span>' +
+      '<span class="angela-greeting-text">' + esc(g.text) + '</span>';
   }
 
-  function setEnabled(enabled) {
-    try {
-      localStorage.setItem(STORAGE_KEY, enabled ? 'true' : 'false');
-    } catch (e) {}
+  /* ========== 板块3: 当月简易日历 ========== */
+  function renderCalendar() {
+    var container = document.getElementById('angelaCalendar');
+    if (!container) return;
+
+    var now = new Date();
+    var year = now.getFullYear();
+    var month = now.getMonth();
+    var today = now.getDate();
+
+    var monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+    var dowNames = ['日','一','二','三','四','五','六'];
+
+    var firstDay = new Date(year, month, 1).getDay();
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    // 获取生日对应的公历日期
+    var birthdayDates = getBirthdayDates(year);
+
+    var html = '';
+    html += '<div class="angela-cal-header">' + year + '年 ' + monthNames[month] + '</div>';
+    html += '<div class="angela-cal-grid">';
+
+    // 星期头
+    dowNames.forEach(function (d) {
+      html += '<div class="angela-cal-dow">' + d + '</div>';
+    });
+
+    // 上月填充
+    for (var i = firstDay - 1; i >= 0; i--) {
+      html += '<div class="angela-cal-day other-month">' + (daysInPrevMonth - i) + '</div>';
+    }
+
+    // 本月日期
+    for (var d = 1; d <= daysInMonth; d++) {
+      var classes = 'angela-cal-day';
+      var dateObj = new Date(year, month, d);
+      var isToday = (d === today);
+      var holiday = getHolidayKey(dateObj);
+      var bdayInfo = getBirthdayOnDate(year, month, d, birthdayDates);
+
+      if (isToday) classes += ' today';
+      if (bdayInfo && bdayInfo.type === 'today') classes += ' birthday-today';
+      else if (bdayInfo && bdayInfo.type === 'tomorrow') classes += ' birthday-tomorrow';
+      if (holiday && !isToday) classes += ' holiday';
+
+      html += '<div class="' + classes + '">' + d + '</div>';
+    }
+
+    // 下月填充
+    var totalCells = firstDay + daysInMonth;
+    var remaining = (7 - (totalCells % 7)) % 7;
+    for (var j = 1; j <= remaining; j++) {
+      html += '<div class="angela-cal-day other-month">' + j + '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+
+    // 预留接口注释：后续可在此扩展农历标注、节假日提醒
   }
 
-  /* ========== 获取农历日期信息 ========== */
-  function getTodayLunar() {
-    var today = new Date();
-    return solarToLunarInfo(today);
-  }
-
-  function solarToLunarInfo(date) {
-    var offset = Math.floor((date.getTime() - new Date(1900, 0, 31).getTime()) / 86400000);
-    var i, temp = 0;
-    var year = 1900;
-    for (i = 1900; i < 2100 && offset > 0; i++) {
-      temp = lYearDays(i);
-      offset -= temp;
-      year++;
-    }
-    if (offset < 0) {
-      offset += temp;
-      year--;
-    }
-    var leap = leapMonth(year);
-    var isLeap = false;
-    var month = 1;
-    for (i = 1; i < 13 && offset > 0; i++) {
-      if (leap > 0 && i === leap + 1 && !isLeap) {
-        isLeap = true;
-        i--;
-        continue;
-      }
-      if (isLeap && i === leap + 1) isLeap = false;
-      temp = isLeap ? leapDays(year) : monthDays(year, i);
-      offset -= temp;
-      month++;
-    }
-    if (offset < 0) {
-      offset += temp;
-      month--;
-    }
-    if (offset === 0 && leap > 0 && month === leap + 1) {
-      if (isLeap) {
-        isLeap = false;
+  /* ========== 生日检测（保留原有功能） ========== */
+  function getBirthdayDates(year) {
+    var dates = [];
+    BIRTHDAY_ARCHIVE.forEach(function (bd) {
+      var solarDate;
+      if (bd.type === 'lunar') {
+        solarDate = lunarToSolar(year, bd.month, bd.day);
       } else {
-        isLeap = true;
-        month--;
+        solarDate = new Date(year, bd.month - 1, bd.day);
       }
-    }
-    var day = offset + 1;
-    return { year: year, month: month, day: day, isLeap: isLeap };
+      dates.push({
+        date: solarDate,
+        label: bd.label,
+        dateType: bd.type === 'lunar' ? '农历' : '阳历'
+      });
+    });
+    return dates;
   }
 
-  /* ========== 获取今日节日 ========== */
-  function getTodayHoliday() {
-    var today = new Date();
-    var solarKey = (today.getMonth() + 1) + '-' + today.getDate();
-    if (SOLAR_HOLIDAYS[solarKey]) {
-      return SOLAR_HOLIDAYS[solarKey];
-    }
-    var lunar = solarToLunarInfo(today);
-    var lunarKey = lunar.month + '-' + lunar.day;
-    if (LUNAR_HOLIDAYS[lunarKey]) {
-      return LUNAR_HOLIDAYS[lunarKey];
+  function getBirthdayOnDate(year, month, day, birthdayDates) {
+    var todayTime = new Date(year, month, day).getTime();
+    var tomorrowTime = todayTime + 86400000;
+    for (var i = 0; i < birthdayDates.length; i++) {
+      var bdTime = new Date(birthdayDates[i].date.getFullYear(), birthdayDates[i].date.getMonth(), birthdayDates[i].date.getDate()).getTime();
+      if (bdTime === todayTime) return { type: 'today', label: birthdayDates[i].label, dateType: birthdayDates[i].dateType };
+      if (bdTime === tomorrowTime) return { type: 'tomorrow', label: birthdayDates[i].label, dateType: birthdayDates[i].dateType };
     }
     return null;
   }
 
-  /* ========== 生日检测 ========== */
   function checkBirthdays() {
     var today = new Date();
     var todayTime = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
     var alerts = [];
+    var birthdayDates = getBirthdayDates(today.getFullYear());
 
-    BIRTHDAY_ARCHIVE.forEach(function (bd) {
-      var solarDate;
-      if (bd.type === 'lunar') {
-        solarDate = lunarToSolar(today.getFullYear(), bd.month, bd.day);
-      } else {
-        solarDate = new Date(today.getFullYear(), bd.month - 1, bd.day);
-      }
-
-      var bdTime = new Date(solarDate.getFullYear(), solarDate.getMonth(), solarDate.getDate()).getTime();
+    birthdayDates.forEach(function (bd) {
+      var bdTime = new Date(bd.date.getFullYear(), bd.date.getMonth(), bd.date.getDate()).getTime();
       var diffDays = Math.round((bdTime - todayTime) / 86400000);
-
       if (diffDays === 0) {
-        // 生日当天
         alerts.push({
           type: 'today',
-          name: bd.name,
           label: bd.label,
-          dateType: bd.type === 'lunar' ? '农历' : '阳历',
+          dateType: bd.dateType,
           message: '今天是' + bd.label + '，生日快乐！🎂 愿你新的一岁，平安喜乐，万事如意！'
         });
       } else if (diffDays === 1) {
-        // 提前一天提醒
         alerts.push({
           type: 'tomorrow',
-          name: bd.name,
           label: bd.label,
-          dateType: bd.type === 'lunar' ? '农历' : '阳历',
+          dateType: bd.dateType,
           message: '明天是' + bd.label + '，记得提前准备好生日祝福哦！🎁'
         });
       }
     });
-
     return alerts;
   }
 
-  /* ========== 获取今日贴纸 & 问候 ========== */
-  function getTodayContent() {
-    var holiday = getTodayHoliday();
-    var dateSeed = new Date().getFullYear() * 10000 + (new Date().getMonth() + 1) * 100 + new Date().getDate();
-
-    if (holiday) {
-      return {
-        sticker: holiday.sticker,
-        greeting: holiday.greeting,
-        isHoliday: true,
-        holidayName: holiday.name
-      };
-    }
-
-    var stickerIndex = Math.floor(seededRandom(dateSeed) * DAILY_STICKERS.length);
-    var greetingIndex = Math.floor(seededRandom(dateSeed * 2 + 1) * DAILY_GREETINGS.length);
-
-    return {
-      sticker: DAILY_STICKERS[stickerIndex],
-      greeting: DAILY_GREETINGS[greetingIndex],
-      isHoliday: false,
-      holidayName: ''
-    };
-  }
-
-  /* ========== 渲染模块 ========== */
-  function renderModule() {
-    if (!isEnabled()) {
-      hideAll();
+  function renderBirthdayAlert() {
+    var container = document.getElementById('angelaBirthdayAlert');
+    if (!container) return;
+    var alerts = checkBirthdays();
+    if (alerts.length === 0) {
+      container.className = 'angela-birthday-alert';
       return;
     }
-
-    var container = document.getElementById('decorationModule');
-    if (!container) return;
-
-    var content = getTodayContent();
-    var birthdays = checkBirthdays();
-
-    var stickerHtml = '<div class="deco-sticker' + (content.isHoliday ? ' deco-sticker-holiday' : '') + '">' + content.sticker + '</div>';
-    var greetingHtml = '<div class="deco-greeting">' + escapeHTML(content.greeting) + '</div>';
-    if (content.isHoliday) {
-      greetingHtml = '<div class="deco-holiday-tag">' + escapeHTML(content.holidayName) + '</div>' + greetingHtml;
-    }
-
-    var birthdayHtml = '';
-    if (birthdays.length > 0) {
-      birthdayHtml = birthdays.map(function (bd) {
-        var cls = bd.type === 'today' ? 'deco-birthday-today' : 'deco-birthday-tomorrow';
-        var icon = bd.type === 'today' ? '🎂' : '🎁';
-        return '<div class="deco-birthday ' + cls + '">' +
-          '<span class="deco-birthday-icon">' + icon + '</span>' +
-          '<span class="deco-birthday-text">' + escapeHTML(bd.message) + '</span>' +
-          '</div>';
-      }).join('');
-    }
-
-    var dateStr = new Date().getMonth() + 1 + '月' + new Date().getDate() + '日';
-    var lunar = getTodayLunar();
-    var lunarStr = '农历' + lunar.month + '月' + lunar.day + '日';
-
-    container.innerHTML =
-      '<div class="deco-inner">' +
-        '<div class="deco-header">' +
-          '<span class="deco-date">' + dateStr + ' · ' + lunarStr + '</span>' +
-          '<button class="deco-toggle-btn" id="decoToggleBtn" type="button" title="关闭装饰模块">✕</button>' +
-        '</div>' +
-        '<div class="deco-body">' +
-          stickerHtml +
-          greetingHtml +
-        '</div>' +
-        (birthdayHtml ? '<div class="deco-birthdays">' + birthdayHtml + '</div>' : '') +
-      '</div>';
-    container.style.display = 'block';
-    setTimeout(function () {
-      container.classList.add('deco-show');
-    }, 50);
-
-    var toggleBtn = document.getElementById('decoToggleBtn');
-    if (toggleBtn) {
-      toggleBtn.addEventListener('click', function () {
-        setEnabled(false);
-        hideAll();
-        showRestoreButton();
-      });
-    }
-
-    // 生日弹窗
-    if (birthdays.length > 0) {
-      showBirthdayPopup(birthdays);
-    }
+    var first = alerts[0];
+    container.className = 'angela-birthday-alert show ' + first.type;
+    var icon = first.type === 'today' ? '🎂' : '🎁';
+    container.innerHTML = icon + ' ' + esc(first.message);
   }
 
-  function hideAll() {
-    var container = document.getElementById('decorationModule');
-    if (container) {
-      container.classList.remove('deco-show');
-      container.style.display = 'none';
-    }
-    var popup = document.getElementById('decoBirthdayPopup');
-    if (popup) popup.remove();
-  }
-
-  function showRestoreButton() {
-    var btn = document.getElementById('decoRestoreBtn');
-    if (!btn) {
-      btn = document.createElement('button');
-      btn.id = 'decoRestoreBtn';
-      btn.className = 'deco-restore-btn';
-      btn.textContent = '✨ 开启装饰';
-      btn.type = 'button';
-      btn.addEventListener('click', function () {
-        setEnabled(true);
-        btn.remove();
-        renderModule();
-      });
-      document.body.appendChild(btn);
-    }
-  }
-
+  /* ========== 生日弹窗 ========== */
   function showBirthdayPopup(birthdays) {
-    // 同一天只弹一次
-    var popupKey = 'deco_birthday_popup_' + todayKey();
-    try {
-      if (localStorage.getItem(popupKey) === 'shown') return;
-    } catch (e) {}
+    var popupKey = BDAY_POPUP_KEY + todayKey();
+    try { if (localStorage.getItem(popupKey) === 'shown') return; } catch (e) {}
 
-    var existing = document.getElementById('decoBirthdayPopup');
+    var existing = document.getElementById('angelaBdayPopup');
     if (existing) existing.remove();
 
     var popup = document.createElement('div');
-    popup.id = 'decoBirthdayPopup';
-    popup.className = 'deco-birthday-popup';
+    popup.id = 'angelaBdayPopup';
+    popup.className = 'angela-bday-popup';
 
     var content = birthdays.map(function (bd) {
       var icon = bd.type === 'today' ? '🎂' : '🎁';
       var tag = bd.type === 'today' ? '今日生日' : '明日生日';
-      var tagCls = bd.type === 'today' ? 'popup-tag-today' : 'popup-tag-tomorrow';
-      return '<div class="popup-birthday-item">' +
-        '<div class="popup-birthday-icon">' + icon + '</div>' +
-        '<div class="popup-birthday-content">' +
-          '<span class="popup-birthday-tag ' + tagCls + '">' + tag + ' · ' + escapeHTML(bd.dateType) + '</span>' +
-          '<p class="popup-birthday-message">' + escapeHTML(bd.message) + '</p>' +
-        '</div>' +
-      '</div>';
+      return '<div class="angela-bday-item">' +
+        '<div class="angela-bday-icon">' + icon + '</div>' +
+        '<div>' +
+          '<span class="angela-bday-tag ' + bd.type + '">' + tag + ' · ' + esc(bd.dateType) + '</span>' +
+          '<p class="angela-bday-msg">' + esc(bd.message) + '</p>' +
+        '</div></div>';
     }).join('');
 
     popup.innerHTML =
-      '<div class="deco-popup-mask"></div>' +
-      '<div class="deco-popup-card">' +
-        '<div class="deco-popup-header">' +
-          '<h3>🎂 生日提醒</h3>' +
-          '<button class="deco-popup-close" type="button" title="收起">✕</button>' +
-        '</div>' +
-        '<div class="deco-popup-body">' + content + '</div>' +
-        '<div class="deco-popup-footer">' +
-          '<button class="deco-popup-dismiss" type="button">知道了，收起</button>' +
-        '</div>' +
+      '<div class="angela-bday-mask"></div>' +
+      '<div class="angela-bday-card">' +
+        '<div class="angela-bday-head"><h3>🎂 生日提醒</h3><button class="angela-bday-close" type="button">✕</button></div>' +
+        '<div class="angela-bday-body">' + content + '</div>' +
+        '<div class="angela-bday-foot"><button class="angela-bday-btn" type="button">知道了，收起</button></div>' +
       '</div>';
 
     document.body.appendChild(popup);
 
     function closePopup() {
-      popup.classList.add('deco-popup-closing');
-      setTimeout(function () {
-        if (popup.parentNode) popup.parentNode.removeChild(popup);
-      }, 300);
-      try {
-        localStorage.setItem(popupKey, 'shown');
-      } catch (e) {}
+      popup.classList.add('closing');
+      popup.classList.remove('show');
+      setTimeout(function () { if (popup.parentNode) popup.parentNode.removeChild(popup); }, 300);
+      try { localStorage.setItem(popupKey, 'shown'); } catch (e) {}
     }
 
-    popup.querySelector('.deco-popup-close').addEventListener('click', closePopup);
-    popup.querySelector('.deco-popup-dismiss').addEventListener('click', closePopup);
-    popup.querySelector('.deco-popup-mask').addEventListener('click', closePopup);
-
-    setTimeout(function () {
-      popup.classList.add('deco-popup-show');
-    }, 50);
+    setTimeout(function () { popup.classList.add('show'); }, 50);
+    popup.querySelector('.angela-bday-close').addEventListener('click', closePopup);
+    popup.querySelector('.angela-bday-btn').addEventListener('click', closePopup);
+    popup.querySelector('.angela-bday-mask').addEventListener('click', closePopup);
   }
 
-  function escapeHTML(text) {
-    return String(text == null ? '' : text).replace(/[&<>"']/g, function (m) {
-      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
+  /* ========== 面板收起/展开 ========== */
+  function initPanelToggle() {
+    var panel = document.getElementById('angelaPanel');
+    var header = document.getElementById('angelaPanelHeader');
+    var toggle = document.getElementById('angelaPanelToggle');
+    if (!panel || !header || !toggle) return;
+
+    // 恢复上次状态
+    try {
+      if (localStorage.getItem(PANEL_MIN_KEY) === 'true') {
+        panel.classList.add('minimized');
+        toggle.textContent = '+';
+      }
+    } catch (e) {}
+
+    function togglePanel() {
+      panel.classList.toggle('minimized');
+      var isMin = panel.classList.contains('minimized');
+      toggle.textContent = isMin ? '+' : '−';
+      try { localStorage.setItem(PANEL_MIN_KEY, isMin ? 'true' : 'false'); } catch (e) {}
+    }
+
+    header.addEventListener('click', function (e) {
+      if (e.target === toggle) return;
+      togglePanel();
+    });
+    toggle.addEventListener('click', function (e) {
+      e.stopPropagation();
+      togglePanel();
     });
   }
 
-  /* ========== 定时检查 ========== */
-  function startTimer() {
-    // 每10分钟检查一次，用于跨日刷新
-    setInterval(function () {
-      var lastShown = '';
-      try {
-        lastShown = localStorage.getItem(LAST_SHOWN_KEY) || '';
-      } catch (e) {}
-      var today = todayKey();
-      if (lastShown !== today) {
-        try {
-          localStorage.setItem(LAST_SHOWN_KEY, today);
-        } catch (e) {}
-        renderModule();
-      }
-    }, 600000); // 10分钟
+  /* ========== 定时刷新 ========== */
+  function startTimers() {
+    // 每分钟刷新问候语（跨时段更新）
+    setInterval(function () { renderGreeting(); }, 60000);
 
-    // 每分钟检查生日提醒
+    // 每天 8:00-22:00 每分钟检查生日
     setInterval(function () {
-      if (!isEnabled()) return;
       var now = new Date();
-      // 只在 8:00-22:00 之间检查
       if (now.getHours() < 8 || now.getHours() > 22) return;
       var birthdays = checkBirthdays();
-      if (birthdays.length > 0) {
-        showBirthdayPopup(birthdays);
-      }
-    }, 60000); // 1分钟
+      if (birthdays.length > 0) showBirthdayPopup(birthdays);
+    }, 60000);
+
+    // 每小时刷新日历（跨日/跨月更新）
+    setInterval(function () { renderCalendar(); renderBirthdayAlert(); }, 3600000);
   }
 
   /* ========== 初始化 ========== */
   function init() {
-    try {
-      localStorage.setItem(LAST_SHOWN_KEY, todayKey());
-    } catch (e) {}
-    renderModule();
-    startTimer();
+    renderStickers();
+    renderGreeting();
+    renderCalendar();
+    renderBirthdayAlert();
+    initPanelToggle();
+    startTimers();
+
+    // 页面加载后检查生日弹窗
+    var birthdays = checkBirthdays();
+    if (birthdays.length > 0) {
+      setTimeout(function () { showBirthdayPopup(birthdays); }, 1500);
+    }
   }
 
   if (document.readyState === 'loading') {

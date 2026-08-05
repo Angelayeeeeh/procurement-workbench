@@ -3,7 +3,7 @@
 <html lang="zh-CN"><head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Angela专用，OF采购工作台</title>
+  <title>Angela的独家定制</title>
   <style>
     @font-face {
       font-family: 'Instrument Sans';
@@ -1878,318 +1878,269 @@
       }
     }
 
-    /* ========== 动态装饰 + 生日提醒模块样式 ========== */
-    .deco-module-container {
+    /* ========== Angela专属悬浮面板样式（新增，不影响原有样式） ========== */
+    .angela-panel {
       position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 900;
-      max-width: 280px;
-      pointer-events: none;
-      opacity: 0;
-      transform: translateY(20px);
-      transition: opacity .4s ease, transform .4s ease;
+      top: 16px;
+      right: 16px;
+      z-index: 950;
+      width: 320px;
+      max-height: calc(100vh - 32px);
+      background: rgba(255,255,255,0.97);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(232,93,78,0.12);
+      border-radius: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.08), 0 2px 8px rgba(232,93,78,0.06);
+      overflow: hidden;
+      transition: all .35s cubic-bezier(.4,0,.2,1);
+      display: flex;
+      flex-direction: column;
     }
-    .deco-module-container.deco-show {
-      opacity: 1;
-      transform: translateY(0);
-    }
-    .deco-module-container .deco-inner {
-      pointer-events: auto;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(232, 93, 78, 0.12);
-      border-radius: 18px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(232, 93, 78, 0.06);
-      padding: 14px 16px 12px;
+    .angela-panel.minimized {
+      max-height: 42px;
       overflow: hidden;
     }
-    .deco-header {
+    .angela-panel.minimized .angela-panel-body { opacity: 0; }
+    .angela-panel-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 8px;
+      padding: 8px 14px;
+      background: linear-gradient(135deg, rgba(232,93,78,0.06), rgba(244,162,97,0.04));
+      border-bottom: 1px solid rgba(232,93,78,0.08);
+      cursor: pointer;
+      user-select: none;
+      flex-shrink: 0;
     }
-    .deco-date {
-      font-size: 11px;
-      color: var(--muted);
-      font-weight: 700;
-      letter-spacing: 0.3px;
+    .angela-panel-header span {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: .3px;
     }
-    .deco-toggle-btn {
-      width: 24px;
-      height: 24px;
+    .angela-panel-toggle {
+      width: 22px; height: 22px;
       border: none;
       background: rgba(0,0,0,0.04);
       border-radius: 50%;
+      font-size: 11px;
       color: var(--muted);
-      font-size: 12px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       transition: all .2s ease;
     }
-    .deco-toggle-btn:hover {
-      background: var(--danger-bg);
-      color: var(--danger);
+    .angela-panel-toggle:hover {
+      background: var(--accent-soft);
+      color: var(--accent);
     }
-    .deco-body {
+    .angela-panel-body {
+      padding: 12px 14px;
+      overflow-y: auto;
+      flex: 1;
+      transition: opacity .25s ease;
+    }
+    .angela-panel-body::-webkit-scrollbar { width: 4px; }
+    .angela-panel-body::-webkit-scrollbar-thumb { background: rgba(232,93,78,0.15); border-radius: 4px; }
+
+    /* 板块1: 卡通贴纸区 */
+    .angela-stickers {
       display: flex;
-      align-items: flex-start;
-      gap: 10px;
+      justify-content: center;
+      align-items: flex-end;
+      gap: 12px;
+      padding: 8px 0 12px;
+      min-height: 80px;
     }
-    .deco-sticker {
-      font-size: 36px;
-      line-height: 1;
-      flex-shrink: 0;
-      animation: deco-bounce 2s ease-in-out infinite;
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    .angela-sticker-item {
+      position: relative;
+      animation: angela-float 3s ease-in-out infinite;
     }
-    .deco-sticker-holiday {
-      font-size: 40px;
-      animation: deco-bounce 1.2s ease-in-out infinite, deco-glow 2s ease-in-out infinite;
-    }
-    @keyframes deco-bounce {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-4px); }
-    }
-    @keyframes deco-glow {
-      0%, 100% { filter: drop-shadow(0 2px 4px rgba(232,93,78,0.15)); }
-      50% { filter: drop-shadow(0 2px 12px rgba(232,93,78,0.35)); }
-    }
-    .deco-greeting {
-      font-size: 13px;
-      line-height: 1.6;
-      color: #555;
-      font-weight: 500;
-      padding-top: 4px;
-    }
-    .deco-holiday-tag {
-      display: inline-block;
+    .angela-sticker-item:nth-child(2) { animation-delay: .6s; }
+    .angela-sticker-item:nth-child(3) { animation-delay: 1.2s; }
+    .angela-sticker-item svg { display: block; }
+    .angela-sticker-sparkle {
+      position: absolute;
+      top: -4px;
+      right: -4px;
       font-size: 10px;
-      font-weight: 800;
-      color: #fff;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      padding: 2px 8px;
-      border-radius: 20px;
-      margin-bottom: 6px;
-      letter-spacing: 0.5px;
+      animation: angela-twinkle 1.8s ease-in-out infinite;
     }
-    .deco-birthdays {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px dashed rgba(232, 93, 78, 0.15);
+    .angela-sticker-item:nth-child(2) .angela-sticker-sparkle { animation-delay: .9s; }
+    .angela-sticker-item:nth-child(3) .angela-sticker-sparkle { animation-delay: 1.5s; }
+    @keyframes angela-float {
+      0%,100% { transform: translateY(0) rotate(-2deg); }
+      50% { transform: translateY(-6px) rotate(2deg); }
     }
-    .deco-birthday {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 6px 8px;
-      border-radius: 10px;
-      font-size: 12px;
-      line-height: 1.5;
-      margin-bottom: 4px;
-    }
-    .deco-birthday-today {
-      background: linear-gradient(135deg, rgba(255, 215, 0, 0.08), rgba(232, 93, 78, 0.06));
-      border: 1px solid rgba(255, 180, 0, 0.2);
-    }
-    .deco-birthday-tomorrow {
-      background: rgba(91, 155, 213, 0.06);
-      border: 1px solid rgba(91, 155, 213, 0.15);
-    }
-    .deco-birthday-icon {
-      font-size: 18px;
-      flex-shrink: 0;
-    }
-    .deco-birthday-text {
-      color: #555;
-      font-weight: 500;
+    @keyframes angela-twinkle {
+      0%,100% { opacity: .3; transform: scale(.8); }
+      50% { opacity: 1; transform: scale(1.2); }
     }
 
-    /* 恢复按钮 */
-    .deco-restore-btn {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 900;
-      pointer-events: auto;
-      padding: 8px 16px;
-      border: 1px solid rgba(232, 93, 78, 0.2);
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      border-radius: 20px;
+    /* 板块2: 时段问候 */
+    .angela-greeting {
+      text-align: center;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(91,155,213,0.06), rgba(232,93,78,0.04));
+      border: 1px solid rgba(91,155,213,0.1);
+    }
+    .angela-greeting-icon { font-size: 16px; vertical-align: middle; }
+    .angela-greeting-text {
+      font-size: 13px;
+      font-weight: 600;
+      color: #555;
+      margin-left: 4px;
+    }
+
+    /* 板块3: 简易日历 */
+    .angela-calendar {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(232,93,78,0.08);
+    }
+    .angela-cal-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 6px 8px;
+      background: rgba(232,93,78,0.04);
       font-size: 12px;
       font-weight: 700;
-      color: var(--accent);
-      cursor: pointer;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-      transition: all .2s ease;
+      color: #666;
     }
-    .deco-restore-btn:hover {
-      background: var(--accent);
+    .angela-cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1px;
+      background: rgba(232,93,78,0.06);
+    }
+    .angela-cal-dow {
+      text-align: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      padding: 3px 0;
+      background: rgba(255,255,255,0.8);
+    }
+    .angela-cal-day {
+      text-align: center;
+      font-size: 11px;
+      padding: 4px 0;
+      background: #fff;
+      color: #666;
+      transition: all .15s ease;
+      min-height: 22px;
+    }
+    .angela-cal-day.other-month { color: #ccc; }
+    .angela-cal-day.today {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
       color: #fff;
-      border-color: var(--accent);
+      font-weight: 800;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(232,93,78,0.2);
+    }
+    .angela-cal-day.birthday-today {
+      background: linear-gradient(135deg, #FFD700, #FFA500);
+      color: #fff;
+      font-weight: 800;
+      border-radius: 6px;
+    }
+    .angela-cal-day.birthday-tomorrow {
+      background: rgba(91,155,213,0.12);
+      color: var(--blue);
+      font-weight: 700;
+      border-radius: 6px;
+    }
+    .angela-cal-day.holiday {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* 生日提醒条 */
+    .angela-birthday-alert {
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      font-size: 11px;
+      line-height: 1.5;
+      display: none;
+    }
+    .angela-birthday-alert.show { display: block; }
+    .angela-birthday-alert.today {
+      background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(232,93,78,0.06));
+      border: 1px solid rgba(255,180,0,0.2);
+      color: #B8860B;
+    }
+    .angela-birthday-alert.tomorrow {
+      background: rgba(91,155,213,0.06);
+      border: 1px solid rgba(91,155,213,0.15);
+      color: var(--blue);
     }
 
     /* 生日弹窗 */
-    .deco-birthday-popup {
-      position: fixed;
-      inset: 0;
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .angela-bday-popup {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
       pointer-events: none;
     }
-    .deco-popup-mask {
-      position: absolute;
-      inset: 0;
-      background: rgba(0, 0, 0, 0);
+    .angela-bday-mask {
+      position: absolute; inset: 0; background: rgba(0,0,0,0);
       transition: background .3s ease;
     }
-    .deco-birthday-popup.deco-popup-show .deco-popup-mask {
-      background: rgba(0, 0, 0, 0.15);
-    }
-    .deco-popup-card {
-      position: relative;
-      background: #fff;
-      border-radius: 24px;
-      box-shadow: 0 16px 48px rgba(0,0,0,0.12), 0 4px 16px rgba(232,93,78,0.08);
-      max-width: 400px;
-      width: calc(100% - 40px);
+    .angela-bday-popup.show .angela-bday-mask { background: rgba(0,0,0,0.12); }
+    .angela-bday-card {
+      position: relative; background: #fff; border-radius: 24px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.12);
+      max-width: 380px; width: calc(100% - 40px);
+      opacity: 0; transform: scale(.85) translateY(20px);
+      transition: opacity .3s ease, transform .3s ease; pointer-events: auto;
       overflow: hidden;
-      opacity: 0;
-      transform: scale(0.85) translateY(20px);
-      transition: opacity .3s ease, transform .3s ease;
-      pointer-events: auto;
     }
-    .deco-birthday-popup.deco-popup-show .deco-popup-card {
-      opacity: 1;
-      transform: scale(1) translateY(0);
-    }
-    .deco-birthday-popup.deco-popup-closing .deco-popup-card {
-      opacity: 0;
-      transform: scale(0.9) translateY(10px);
-    }
-    .deco-birthday-popup.deco-popup-closing .deco-popup-mask {
-      background: rgba(0, 0, 0, 0);
-    }
-    .deco-popup-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 20px 12px;
+    .angela-bday-popup.show .angela-bday-card { opacity: 1; transform: scale(1) translateY(0); }
+    .angela-bday-popup.closing .angela-bday-card { opacity: 0; transform: scale(.9) translateY(10px); }
+    .angela-bday-popup.closing .angela-bday-mask { background: rgba(0,0,0,0); }
+    .angela-bday-head {
+      padding: 14px 20px 10px;
       background: linear-gradient(135deg, rgba(232,93,78,0.06), rgba(244,162,97,0.04));
-      border-bottom: 1px solid rgba(232, 93, 78, 0.08);
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid rgba(232,93,78,0.08);
     }
-    .deco-popup-header h3 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 800;
-      color: #333;
+    .angela-bday-head h3 { margin: 0; font-size: 15px; font-weight: 800; color: #333; }
+    .angela-bday-close {
+      width: 26px; height: 26px; border: none; background: rgba(0,0,0,0.04);
+      border-radius: 50%; font-size: 13px; color: var(--muted); cursor: pointer;
+      display: flex; align-items: center; justify-content: center; transition: all .2s ease;
     }
-    .deco-popup-close {
-      width: 28px;
-      height: 28px;
-      border: none;
-      background: rgba(0,0,0,0.04);
-      border-radius: 50%;
-      font-size: 14px;
-      color: var(--muted);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all .2s ease;
-    }
-    .deco-popup-close:hover {
-      background: var(--danger-bg);
-      color: var(--danger);
-    }
-    .deco-popup-body {
-      padding: 16px 20px;
-    }
-    .popup-birthday-item {
-      display: flex;
-      gap: 12px;
-      padding: 12px;
-      border-radius: 14px;
-      margin-bottom: 8px;
-    }
-    .popup-birthday-item:last-child { margin-bottom: 0; }
-    .popup-birthday-item:nth-child(odd) {
-      background: rgba(255, 215, 0, 0.05);
-    }
-    .popup-birthday-item:nth-child(even) {
-      background: rgba(91, 155, 213, 0.05);
-    }
-    .popup-birthday-icon {
-      font-size: 28px;
-      flex-shrink: 0;
-      line-height: 1;
-    }
-    .popup-birthday-content {
-      flex: 1;
-    }
-    .popup-birthday-tag {
-      display: inline-block;
-      font-size: 10px;
-      font-weight: 800;
-      padding: 2px 8px;
-      border-radius: 20px;
-      margin-bottom: 6px;
-      letter-spacing: 0.3px;
-    }
-    .popup-tag-today {
-      background: linear-gradient(135deg, #FFD700, #FFA500);
-      color: #fff;
-    }
-    .popup-tag-tomorrow {
-      background: rgba(91, 155, 213, 0.15);
-      color: var(--blue);
-    }
-    .popup-birthday-message {
-      margin: 0;
-      font-size: 14px;
-      line-height: 1.6;
-      color: #555;
-      font-weight: 500;
-    }
-    .deco-popup-footer {
-      padding: 12px 20px 16px;
-      text-align: center;
-    }
-    .deco-popup-dismiss {
-      padding: 10px 32px;
-      border: none;
-      border-radius: 20px;
+    .angela-bday-close:hover { background: var(--danger-bg); color: var(--danger); }
+    .angela-bday-body { padding: 14px 20px; }
+    .angela-bday-item { display: flex; gap: 10px; padding: 10px; border-radius: 12px; margin-bottom: 6px; }
+    .angela-bday-item:last-child { margin-bottom: 0; }
+    .angela-bday-item:nth-child(odd) { background: rgba(255,215,0,0.05); }
+    .angela-bday-item:nth-child(even) { background: rgba(91,155,213,0.05); }
+    .angela-bday-icon { font-size: 24px; flex-shrink: 0; }
+    .angela-bday-tag { display: inline-block; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 20px; margin-bottom: 4px; }
+    .angela-bday-tag.today { background: linear-gradient(135deg, #FFD700, #FFA500); color: #fff; }
+    .angela-bday-tag.tomorrow { background: rgba(91,155,213,0.15); color: var(--blue); }
+    .angela-bday-msg { margin: 0; font-size: 13px; line-height: 1.5; color: #555; font-weight: 500; }
+    .angela-bday-foot { padding: 10px 20px 14px; text-align: center; }
+    .angela-bday-btn {
+      padding: 8px 28px; border: none; border-radius: 20px;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: #fff;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all .2s ease;
-      box-shadow: 0 4px 12px rgba(232, 93, 78, 0.2);
+      color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 4px 12px rgba(232,93,78,0.2); transition: all .2s ease;
     }
-    .deco-popup-dismiss:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(232, 93, 78, 0.3);
-    }
+    .angela-bday-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(232,93,78,0.3); }
 
-    /* 移动端适配 */
+    /* 窄屏适配 */
     @media (max-width: 768px) {
-      .deco-module-container {
-        max-width: 240px;
-        bottom: 12px;
-        right: 12px;
-      }
-      .deco-sticker { font-size: 28px; }
-      .deco-greeting { font-size: 12px; }
-      .deco-popup-card { max-width: calc(100% - 24px); }
+      .angela-panel { width: 260px; top: 8px; right: 8px; }
+      .angela-sticker-item svg { width: 48px; height: 48px; }
+      .angela-greeting-text { font-size: 12px; }
     }
   </style>
 </head>
@@ -2197,7 +2148,7 @@
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <h1>Angela专用，OF采购工作台</h1>
+        <h1>Angela的独家定制</h1>
         <p>机油、雨刷、车衣、蓄电池、防冻液等汽车后市场产品</p>
       </div>
       <nav class="nav" id="nav"><button data-nav="home" class="active"><span>首页・今日总览</span><small>5</small></button><button data-nav="suppliers" class=""><span>供应商管理</span><small>0</small></button><button data-nav="orders" class=""><span>采购订单 &amp; 跟进</span><small>0</small></button><button data-nav="smartEmail" class=""><span>智能邮箱</span><small>0</small></button><button data-nav="finance" class=""><span>付款 &amp; 发票管理</span><small>1</small></button><button data-nav="reconciliation" class=""><span>工厂月结对账</span><small>0</small></button><button data-nav="antifake" class=""><span>防伪标管理</span><small>0</small></button><button data-nav="contracts" class=""><span>合同管理</span><small>1</small></button><button data-nav="weekly" class=""><span>周报管理</span><small>5</small></button><button data-nav="projects" class=""><span>项目专项跟进</span><small>2</small></button></nav>
@@ -3007,7 +2958,22 @@
   <script src="assets/procurement-cloud-sync.js"></script>
   <script src="assets/decoration-module.js"></script>
 
-  <!-- 动态装饰 + 生日提醒模块容器 -->
-  <div class="deco-module-container" id="decorationModule"></div>
+  <!-- ========== Angela专属悬浮面板（新增，不影响原有业务） ========== -->
+  <div class="angela-panel" id="angelaPanel">
+    <div class="angela-panel-header" id="angelaPanelHeader">
+      <span>Angela的独家定制</span>
+      <button class="angela-panel-toggle" id="angelaPanelToggle" type="button" title="收起/展开">−</button>
+    </div>
+    <div class="angela-panel-body" id="angelaPanelBody">
+      <!-- 板块1: 卡通贴纸区 -->
+      <div class="angela-stickers" id="angelaStickers"></div>
+      <!-- 板块2: 时段问候 -->
+      <div class="angela-greeting" id="angelaGreeting"></div>
+      <!-- 板块3: 当月日历 -->
+      <div class="angela-calendar" id="angelaCalendar"></div>
+      <!-- 生日提醒条 -->
+      <div class="angela-birthday-alert" id="angelaBirthdayAlert"></div>
+    </div>
+  </div>
 
 </body></html>
