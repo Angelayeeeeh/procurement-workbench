@@ -1877,6 +1877,320 @@
         break-inside: avoid;
       }
     }
+
+    /* ========== 动态装饰 + 生日提醒模块样式 ========== */
+    .deco-module-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 900;
+      max-width: 280px;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity .4s ease, transform .4s ease;
+    }
+    .deco-module-container.deco-show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .deco-module-container .deco-inner {
+      pointer-events: auto;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(232, 93, 78, 0.12);
+      border-radius: 18px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(232, 93, 78, 0.06);
+      padding: 14px 16px 12px;
+      overflow: hidden;
+    }
+    .deco-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .deco-date {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .deco-toggle-btn {
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: rgba(0,0,0,0.04);
+      border-radius: 50%;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .2s ease;
+    }
+    .deco-toggle-btn:hover {
+      background: var(--danger-bg);
+      color: var(--danger);
+    }
+    .deco-body {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .deco-sticker {
+      font-size: 36px;
+      line-height: 1;
+      flex-shrink: 0;
+      animation: deco-bounce 2s ease-in-out infinite;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+    .deco-sticker-holiday {
+      font-size: 40px;
+      animation: deco-bounce 1.2s ease-in-out infinite, deco-glow 2s ease-in-out infinite;
+    }
+    @keyframes deco-bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-4px); }
+    }
+    @keyframes deco-glow {
+      0%, 100% { filter: drop-shadow(0 2px 4px rgba(232,93,78,0.15)); }
+      50% { filter: drop-shadow(0 2px 12px rgba(232,93,78,0.35)); }
+    }
+    .deco-greeting {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #555;
+      font-weight: 500;
+      padding-top: 4px;
+    }
+    .deco-holiday-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-bottom: 6px;
+      letter-spacing: 0.5px;
+    }
+    .deco-birthdays {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed rgba(232, 93, 78, 0.15);
+    }
+    .deco-birthday {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+      line-height: 1.5;
+      margin-bottom: 4px;
+    }
+    .deco-birthday-today {
+      background: linear-gradient(135deg, rgba(255, 215, 0, 0.08), rgba(232, 93, 78, 0.06));
+      border: 1px solid rgba(255, 180, 0, 0.2);
+    }
+    .deco-birthday-tomorrow {
+      background: rgba(91, 155, 213, 0.06);
+      border: 1px solid rgba(91, 155, 213, 0.15);
+    }
+    .deco-birthday-icon {
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .deco-birthday-text {
+      color: #555;
+      font-weight: 500;
+    }
+
+    /* 恢复按钮 */
+    .deco-restore-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 900;
+      pointer-events: auto;
+      padding: 8px 16px;
+      border: 1px solid rgba(232, 93, 78, 0.2);
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+      transition: all .2s ease;
+    }
+    .deco-restore-btn:hover {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    /* 生日弹窗 */
+    .deco-birthday-popup {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .deco-popup-mask {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0);
+      transition: background .3s ease;
+    }
+    .deco-birthday-popup.deco-popup-show .deco-popup-mask {
+      background: rgba(0, 0, 0, 0.15);
+    }
+    .deco-popup-card {
+      position: relative;
+      background: #fff;
+      border-radius: 24px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.12), 0 4px 16px rgba(232,93,78,0.08);
+      max-width: 400px;
+      width: calc(100% - 40px);
+      overflow: hidden;
+      opacity: 0;
+      transform: scale(0.85) translateY(20px);
+      transition: opacity .3s ease, transform .3s ease;
+      pointer-events: auto;
+    }
+    .deco-birthday-popup.deco-popup-show .deco-popup-card {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+    .deco-birthday-popup.deco-popup-closing .deco-popup-card {
+      opacity: 0;
+      transform: scale(0.9) translateY(10px);
+    }
+    .deco-birthday-popup.deco-popup-closing .deco-popup-mask {
+      background: rgba(0, 0, 0, 0);
+    }
+    .deco-popup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px 12px;
+      background: linear-gradient(135deg, rgba(232,93,78,0.06), rgba(244,162,97,0.04));
+      border-bottom: 1px solid rgba(232, 93, 78, 0.08);
+    }
+    .deco-popup-header h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+      color: #333;
+    }
+    .deco-popup-close {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: rgba(0,0,0,0.04);
+      border-radius: 50%;
+      font-size: 14px;
+      color: var(--muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .2s ease;
+    }
+    .deco-popup-close:hover {
+      background: var(--danger-bg);
+      color: var(--danger);
+    }
+    .deco-popup-body {
+      padding: 16px 20px;
+    }
+    .popup-birthday-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 14px;
+      margin-bottom: 8px;
+    }
+    .popup-birthday-item:last-child { margin-bottom: 0; }
+    .popup-birthday-item:nth-child(odd) {
+      background: rgba(255, 215, 0, 0.05);
+    }
+    .popup-birthday-item:nth-child(even) {
+      background: rgba(91, 155, 213, 0.05);
+    }
+    .popup-birthday-icon {
+      font-size: 28px;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .popup-birthday-content {
+      flex: 1;
+    }
+    .popup-birthday-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-bottom: 6px;
+      letter-spacing: 0.3px;
+    }
+    .popup-tag-today {
+      background: linear-gradient(135deg, #FFD700, #FFA500);
+      color: #fff;
+    }
+    .popup-tag-tomorrow {
+      background: rgba(91, 155, 213, 0.15);
+      color: var(--blue);
+    }
+    .popup-birthday-message {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #555;
+      font-weight: 500;
+    }
+    .deco-popup-footer {
+      padding: 12px 20px 16px;
+      text-align: center;
+    }
+    .deco-popup-dismiss {
+      padding: 10px 32px;
+      border: none;
+      border-radius: 20px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all .2s ease;
+      box-shadow: 0 4px 12px rgba(232, 93, 78, 0.2);
+    }
+    .deco-popup-dismiss:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(232, 93, 78, 0.3);
+    }
+
+    /* 移动端适配 */
+    @media (max-width: 768px) {
+      .deco-module-container {
+        max-width: 240px;
+        bottom: 12px;
+        right: 12px;
+      }
+      .deco-sticker { font-size: 28px; }
+      .deco-greeting { font-size: 12px; }
+      .deco-popup-card { max-width: calc(100% - 24px); }
+    }
   </style>
 </head>
 <body>
@@ -2691,8 +3005,9 @@
   <script src="assets/procurement-supabase-config.js"></script>
   <script src="assets/app.js"></script>
   <script src="assets/procurement-cloud-sync.js"></script>
+  <script src="assets/decoration-module.js"></script>
 
-
-
+  <!-- 动态装饰 + 生日提醒模块容器 -->
+  <div class="deco-module-container" id="decorationModule"></div>
 
 </body></html>
