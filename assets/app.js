@@ -641,6 +641,41 @@
     $('closeSupplierModalBtn').addEventListener('click', closeSupplierModal);
     $('supplierForm').addEventListener('submit', onSupplierSubmit);
     $('antifakeMoveForm').addEventListener('submit', onAntifakeMoveSubmit);
+    var antifakeSubtabs = $('antifakeSubtabs');
+    if (antifakeSubtabs) {
+      antifakeSubtabs.querySelectorAll('.antifake-subtab-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var target = btn.getAttribute('data-antifake-subtab');
+          antifakeSubtabs.querySelectorAll('.antifake-subtab-btn').forEach(function (b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          document.querySelectorAll('[data-antifake-subtab-content]').forEach(function (c) {
+            c.classList.toggle('active', c.getAttribute('data-antifake-subtab-content') === target);
+          });
+          if (target === 'stock' || target === 'ledger') renderAntifakePanel();
+        });
+      });
+      var toggleBtn = $('antifakeSubtabToggle');
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', function () {
+          antifakeSubtabs.classList.toggle('collapsed');
+        });
+      }
+    }
+    var ratioInput = $('antifakeUseRatio');
+    if (ratioInput) {
+      var updateRatioPreview = function () {
+        var parsed = parseAntifakeRatio(ratioInput.value);
+        var preview = $('antifakeRatioPreview');
+        if (preview) {
+          preview.textContent = parsed ? '→ 每件产品配 ' + parsed + ' 个防伪标' : '格式无效，请输入如 1:1 或 4:1';
+        }
+        if (pendingPurchaseOrderImport && pendingPurchaseOrderImport.singleOrder) {
+          renderPurchaseOrderPreview(pendingPurchaseOrderImport);
+        }
+      };
+      ratioInput.addEventListener('input', updateRatioPreview);
+      updateRatioPreview();
+    }
     $('settlementFlowForm').addEventListener('submit', onSettlementFlowSubmit);
     $('temporaryPaymentForm').addEventListener('submit', onTemporaryPaymentSubmit);
     $('openTempPaymentFormBtn').addEventListener('click', openTemporaryPaymentForm);
@@ -973,6 +1008,7 @@
         escapeHTML(latest ? latest.content : '暂无历史沟通记录') +
         '</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">' +
         (open ? '<span class="status pending">待跟进</span>' : '<span class="status done">正常</span>') +
+        '<button class="btn factory-rename-btn" data-rename-factory="' + escapeHTML(f) + '" style="font-size:12px;padding:4px 10px;min-height:auto;">修改名称</button>' +
         '<button class="btn danger factory-delete-btn" data-delete-factory="' + escapeHTML(f) + '" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button>' +
         '</div></div>';
     }).join('');
@@ -988,6 +1024,12 @@
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
         deleteSupplier(btn.getAttribute('data-delete-factory'));
+      });
+    });
+    $('factoryCards').querySelectorAll('[data-rename-factory]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        openRenameSupplierModal(btn.getAttribute('data-rename-factory'));
       });
     });
   }
@@ -1069,6 +1111,187 @@
     });
   }
 
+  function ensureXLSXLibrary(cb) {
+    if (window.XLSX) { cb(null); return; }
+    var s = document.createElement('script');
+    s.src = './xlsx.full.min.js';
+    s.onload = function () { cb(null); };
+    s.onerror = function () {
+      var s2 = document.createElement('script');
+      s2.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s2.onload = function () { cb(null); };
+      s2.onerror = function () { cb(new Error('XLSX 库加载失败')); };
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s);
+  }
+
+  function findInventoryCol(headers, keywords) {
+    for (var i = 0; i < headers.length; i++) {
+      var h = String(headers[i] || '').trim().toLowerCase();
+      for (var j = 0; j < keywords.length; j++) {
+        if (h === keywords[j].toLowerCase()) return i;
+      }
+    }
+    for (var i = 0; i < headers.length; i++) {
+      var h = String(headers[i] || '').trim().toLowerCase();
+      for (var j = 0; j < keywords.length; j++) {
+        if (h.indexOf(keywords[j].toLowerCase()) >= 0) return i;
+      }
+    }
+    return -1;
+  }
+
+  function handleFactoryInventoryUpload(file) {
+    if (!file || !/\.(xlsx|xls)$/i.test(file.name || '')) {
+      showFactoryInventoryUploadMessage('请上传 .xls 或 .xlsx 格式的 Excel 文件', 'error');
+      return;
+    }
+    if (!selectedFactory) {
+      showFactoryInventoryUploadMessage('请先选择工厂', 'error');
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      ensureXLSXLibrary(function (err) {
+        if (err) { showFactoryInventoryUploadMessage('Excel 解析库加载失败：' + err.message, 'error'); return; }
+        try {
+          var wb = window.XLSX.read(e.target.result, { type: 'array', cellDates: true });
+          var ws = wb.Sheets[wb.SheetNames[0]];
+          var rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          if (!rows || rows.length < 2) { showFactoryInventoryUploadMessage('Excel 文件没有数据行', 'error'); return; }
+          var headers = (rows[0] || []).map(function (h) { return String(h || '').trim(); });
+          var colOrder = findInventoryCol(headers, ['订单号', '订单编号', 'PO号', ' order']);
+          var colGY = findInventoryCol(headers, ['GY号', 'GY编码', '型号', 'SKU', 'GY']);
+          var colName = findInventoryCol(headers, ['品名', '产品名称', '货品名称', '产品', '货品']);
+          var colQty = findInventoryCol(headers, ['库存数量', '数量', '库存', 'qty']);
+          var missing = [];
+          if (colGY === -1) missing.push('GY号');
+          if (colQty === -1) missing.push('库存数量');
+          if (missing.length) {
+            showFactoryInventoryUploadMessage('缺少必要列：' + missing.join('、') + '。检测到的表头：' + headers.join('、'), 'error');
+            return;
+          }
+          var parsed = [];
+          var errors = [];
+          for (var i = 1; i < rows.length; i++) {
+            var r = rows[i];
+            if (!r || r.length === 0) continue;
+            var gy = colGY >= 0 ? String(r[colGY] || '').trim() : '';
+            var qtyRaw = colQty >= 0 ? r[colQty] : '';
+            var qtyNum = parseNumberLike(qtyRaw);
+            if (!gy && !qtyRaw) continue;
+            if (!gy) { errors.push('第' + (i + 1) + '行缺少GY号'); continue; }
+            if (isNaN(Number(qtyRaw)) && qtyRaw !== '') { errors.push('第' + (i + 1) + '行库存数量不是有效数字：' + qtyRaw); continue; }
+            if (qtyNum < 0) { errors.push('第' + (i + 1) + '行库存数量为负数：' + qtyNum); continue; }
+            parsed.push({
+              orderNo: colOrder >= 0 ? String(r[colOrder] || '').trim() : '',
+              gyModel: gy,
+              productName: colName >= 0 ? String(r[colName] || '').trim() : '',
+              qty: qtyNum
+            });
+          }
+          if (errors.length) {
+            showFactoryInventoryUploadMessage('解析发现以下问题，请修正后重新上传：\n' + errors.slice(0, 10).join('\n'), 'error');
+            return;
+          }
+          if (!parsed.length) { showFactoryInventoryUploadMessage('未解析到有效数据行', 'error'); return; }
+          renderFactoryInventoryUploadPreview(parsed, file.name);
+        } catch (parseErr) {
+          console.error('Excel解析失败', parseErr);
+          showFactoryInventoryUploadMessage('Excel 解析失败：' + (parseErr.message || '未知错误'), 'error');
+        }
+      });
+    };
+    reader.onerror = function () { showFactoryInventoryUploadMessage('文件读取失败', 'error'); };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function showFactoryInventoryUploadMessage(message, type) {
+    var el = $('factoryInventoryUploadPreview');
+    if (!el) return;
+    var cls = type === 'error' ? 'updated' : 'added';
+    el.innerHTML = '<div class="feedback-item ' + cls + '">' + escapeHTML(message).replace(/\n/g, '<br>') + '</div>';
+    el.style.display = 'block';
+  }
+
+  function renderFactoryInventoryUploadPreview(parsed, fileName) {
+    var el = $('factoryInventoryUploadPreview');
+    if (!el) return;
+    var totalQty = parsed.reduce(function (s, r) { return s + Number(r.qty || 0); }, 0);
+    var rows = parsed.map(function (r, i) {
+      return '<tr>' +
+        '<td>' + escapeHTML(r.orderNo || '') + '</td>' +
+        '<td>' + escapeHTML(r.gyModel || '') + '</td>' +
+        '<td>' + escapeHTML(r.productName || '') + '</td>' +
+        '<td>' + escapeHTML(r.qty || 0) + '</td>' +
+        '</tr>';
+    }).join('');
+    el.innerHTML =
+      '<div class="feedback-section"><strong>库存明细识别结果：' + escapeHTML(fileName) + '</strong>' +
+      '<div class="feedback-item added">共识别 ' + parsed.length + ' 行，库存数量合计 ' + totalQty + '</div>' +
+      '<div class="table-wrap" style="margin-top:10px;"><table><thead><tr><th>订单号</th><th>GY号</th><th>品名</th><th>库存数量</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="record-actions" style="margin-top:12px;">' +
+      '<button class="btn primary" id="confirmFactoryInventoryUploadBtn" type="button">确认写入库存</button>' +
+      '<button class="btn" id="cancelFactoryInventoryUploadBtn" type="button">取消</button>' +
+      '</div></div>';
+    el.style.display = 'block';
+    $('confirmFactoryInventoryUploadBtn').addEventListener('click', function () {
+      confirmFactoryInventoryUpload(parsed, fileName);
+    });
+    $('cancelFactoryInventoryUploadBtn').addEventListener('click', function () {
+      el.style.display = 'none';
+      el.innerHTML = '';
+    });
+  }
+
+  function confirmFactoryInventoryUpload(parsed, fileName) {
+    try {
+      var factory = selectedFactory;
+      if (!factory) { toast('请先选择工厂'); return; }
+      state.factoryInventory = state.factoryInventory && typeof state.factoryInventory === 'object' ? state.factoryInventory : {};
+      state.factoryInventoryMovements = Array.isArray(state.factoryInventoryMovements) ? state.factoryInventoryMovements : [];
+      if (!state.factoryInventory[factory]) state.factoryInventory[factory] = {};
+      var count = 0;
+      parsed.forEach(function (item) {
+        var gy = item.gyModel;
+        var qty = Number(item.qty || 0);
+        if (!gy || qty < 0) return;
+        var stock = state.factoryInventory[factory][gy] || {
+          factory: factory, gyModel: gy, productName: item.productName || '', qty: 0,
+          orderNo: item.orderNo || '', createdAt: nowISO(), updatedAt: nowISO()
+        };
+        stock.productName = item.productName || stock.productName || '';
+        stock.orderNo = item.orderNo || stock.orderNo || '';
+        stock.qty = qty;
+        stock.updatedAt = nowISO();
+        state.factoryInventory[factory][gy] = stock;
+        state.factoryInventoryMovements.unshift({
+          id: makeId(), type: 'Excel上传入库', factory: factory, gyModel: gy,
+          productName: item.productName || '', qty: qty, unitPrice: 0, lineAmount: 0,
+          orderNo: item.orderNo || '', orderDate: '', recordId: '',
+          sourceFile: fileName || '', sourceRow: '',
+          createdAt: nowISO(), note: 'Excel库存明细上传入库，工厂：' + factory
+        });
+        count++;
+      });
+      state.operationLogs = state.operationLogs || [];
+      state.operationLogs.unshift({
+        time: nowISO(), action: 'Excel库存明细上传',
+        detail: factory + ' / ' + count + ' 行 / 来源：' + (fileName || ''),
+        factory: factory
+      });
+      saveState();
+      renderAll();
+      var el = $('factoryInventoryUploadPreview');
+      if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+      toast('已写入 ' + factory + ' 库存明细 ' + count + ' 行，总库存 ' + parsed.reduce(function (s, r) { return s + Number(r.qty || 0); }, 0));
+    } catch (err) {
+      console.error('写入库存失败', err);
+      toast('写入库存失败：' + (err.message || '未知错误'));
+    }
+  }
+
   function renderFactoryManagedInventoryHTML(factory) {
     var inventoryMap = state.factoryInventory && state.factoryInventory[factory] ? state.factoryInventory[factory] : {};
     var stocks = Object.keys(inventoryMap).map(function (gy) { return inventoryMap[gy]; }).sort(function (a, b) {
@@ -1080,6 +1303,18 @@
     var laikeDedicatedLink = factory === '莱克'
       ? '<a class="btn primary" href="./laike-inventory-dashboard/laike-inventory-dashboard.html" target="_blank" rel="noopener">莱克专属库存</a>'
       : '';
+    var uploadZoneHtml = '<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:14px;">' +
+      '<div class="card-header"><h3>拖拽上传库存明细</h3><span>支持 Excel 文件，自动识别订单号、GY号、品名、库存数量</span></div>' +
+      '<div class="card-body">' +
+      '<div class="po-upload-box" id="factoryInventoryDropZone" style="margin-bottom:12px;">' +
+      '<input id="factoryInventoryFileInput" type="file" accept=".xlsx,.xls">' +
+      '<div class="po-upload-icon">⇪</div>' +
+      '<div><strong>拖拽库存明细 Excel 到这里，或点击选择文件</strong>' +
+      '<p>自动识别列名：订单号、GY号、品名、库存数量（支持模糊匹配）</p>' +
+      '<small>仅支持 .xlsx / .xls 格式</small></div>' +
+      '</div>' +
+      '<div class="quick-feedback" id="factoryInventoryUploadPreview" style="display:none;"></div>' +
+      '</div></div>';
     var stockRows = stocks.map(function (item) {
       var latest = factoryLatestInventoryMovement(factory, item.gyModel);
       return '<tr>' +
@@ -1105,7 +1340,7 @@
         '<td>' + escapeHTML(m.sourceFile || '') + '</td>' +
         '</tr>';
     }).join('');
-    return '<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:14px;">' +
+    return uploadZoneHtml + '<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:14px;">' +
       '<div class="card-header"><h3>工厂代管库存（GY号主键）</h3><span>当前型号 ' + stocks.length + ' 个，库存总数 ' + totalQty + '</span></div>' +
       '<div class="card-body">' +
       '<div class="po-backup-notice">提示：库存数据保存在本浏览器 localStorage。浏览器缓存有丢失风险，建议定期导出库存备份文件长期保存。</div>' +
@@ -1140,6 +1375,32 @@
         deductFactoryInventoryItem(selectedFactory, gy, qty, '手动扣减', '');
       });
     });
+    var dropZone = $('factoryInventoryDropZone');
+    var fileInput = $('factoryInventoryFileInput');
+    if (dropZone && fileInput) {
+      dropZone.addEventListener('click', function () { fileInput.click(); });
+      fileInput.addEventListener('change', function (e) {
+        var file = e.target.files && e.target.files[0];
+        if (file) handleFactoryInventoryUpload(file);
+        fileInput.value = '';
+      });
+      ['dragenter', 'dragover'].forEach(function (eventName) {
+        dropZone.addEventListener(eventName, function (e) {
+          e.preventDefault(); e.stopPropagation();
+          dropZone.classList.add('drag-over');
+        });
+      });
+      ['dragleave', 'drop'].forEach(function (eventName) {
+        dropZone.addEventListener(eventName, function (e) {
+          e.preventDefault(); e.stopPropagation();
+          dropZone.classList.remove('drag-over');
+        });
+      });
+      dropZone.addEventListener('drop', function (e) {
+        var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file) handleFactoryInventoryUpload(file);
+      });
+    }
   }
 
   function renderFactoryFollowTable(records) {
@@ -1289,8 +1550,82 @@
   }
 
   function renderAntifakePanel() {
+    renderAntifakeStockTablePanel();
     renderAntifakeStockPanel();
     renderAntifakeMovementTable();
+  }
+
+  function renderAntifakeStockTablePanel() {
+    var container = $('antifakeStockTablePanel');
+    if (!container) return;
+    var visibleFactories = factories.filter(function (factory) {
+      return !state.antifakeExempt[factory];
+    });
+    if (!visibleFactories.length) {
+      container.innerHTML = '<div class="empty">当前没有需要寄标的工厂。</div>';
+      return;
+    }
+    var totalRemaining = 0;
+    var totalSent = 0;
+    var totalDeducted = 0;
+    var alertCount = 0;
+    var factoryData = visibleFactories.map(function (factory) {
+      var qty = Number(state.antifakeStock[factory] || 0);
+      var threshold = Number(state.antifakeThresholds[factory] != null ? state.antifakeThresholds[factory] : 50);
+      var sentTotal = 0;
+      var deductedTotal = 0;
+      state.antifakeMovements.forEach(function (m) {
+        if (m.factory !== factory) return;
+        if (m.type === 'send' || m.type === 'initial') {
+          sentTotal += Number(m.qty || 0);
+        } else {
+          deductedTotal += Number(m.qty || 0);
+        }
+      });
+      var isLow = qty < threshold;
+      if (isLow) alertCount++;
+      totalRemaining += qty;
+      totalSent += sentTotal;
+      totalDeducted += deductedTotal;
+      return { factory: factory, qty: qty, threshold: threshold, sentTotal: sentTotal, deductedTotal: deductedTotal, isLow: isLow };
+    });
+    var summaryHtml = '<div class="antifake-stock-summary" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;">' +
+      '<div style="padding:14px 20px;border-radius:var(--radius);background:var(--accent-soft);border:1px solid rgba(232,93,78,0.18);">' +
+      '<div style="font-size:12px;color:var(--muted);font-weight:700;">防伪标剩余总量</div>' +
+      '<div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:800;color:var(--accent);">' + totalRemaining + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);font-weight:700;">需寄标工厂 ' + visibleFactories.length + ' 家</div></div>' +
+      '<div style="padding:14px 20px;border-radius:var(--radius);background:#F5F5F5;border:1px solid var(--rule);">' +
+      '<div style="font-size:12px;color:var(--muted);font-weight:700;">累计寄出</div>' +
+      '<div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:800;color:var(--blue);">' + totalSent + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);font-weight:700;">全部工厂寄出累计</div></div>' +
+      '<div style="padding:14px 20px;border-radius:var(--radius);background:#F5F5F5;border:1px solid var(--rule);">' +
+      '<div style="font-size:12px;color:var(--muted);font-weight:700;">累计扣减</div>' +
+      '<div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:800;color:var(--accent2);">' + totalDeducted + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);font-weight:700;">含订单扣减/损耗/退回</div></div>' +
+      '<div style="padding:14px 20px;border-radius:var(--radius);background:' + (alertCount > 0 ? 'var(--danger-bg)' : 'var(--success-bg)') + ';border:1px solid ' + (alertCount > 0 ? 'rgba(232,93,78,0.22)' : 'rgba(76,175,80,0.20)') + ';">' +
+      '<div style="font-size:12px;color:var(--muted);font-weight:700;">库存告警</div>' +
+      '<div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:800;color:' + (alertCount > 0 ? 'var(--danger)' : 'var(--success)') + ';">' + alertCount + '</div>' +
+      '<div style="font-size:11px;color:var(--muted);font-weight:700;">' + (alertCount > 0 ? '家工厂低于阈值' : '全部库存正常') + '</div></div>' +
+      '</div>';
+    var tableRows = factoryData.map(function (d) {
+      var rowCls = d.isLow ? ' style="background:#FFF5F4;"' : '';
+      var statusHtml = d.isLow
+        ? '<span class="status pending" style="background:var(--danger-bg);color:var(--danger);">低于阈值</span>'
+        : '<span class="status done">正常</span>';
+      var qtyCls = d.isLow ? ' style="color:var(--danger);font-weight:700;"' : ' style="color:var(--success);font-weight:700;"';
+      return '<tr' + rowCls + '>' +
+        '<td><strong>' + escapeHTML(d.factory) + '</strong></td>' +
+        '<td style="font-family:JetBrains Mono,monospace;"' + qtyCls + '>' + d.qty + '</td>' +
+        '<td style="font-family:JetBrains Mono,monospace;color:var(--muted);">' + d.threshold + '</td>' +
+        '<td style="font-family:JetBrains Mono,monospace;color:var(--blue);">' + d.sentTotal + '</td>' +
+        '<td style="font-family:JetBrains Mono,monospace;color:var(--accent2);">' + d.deductedTotal + '</td>' +
+        '<td>' + statusHtml + '</td>' +
+        '</tr>';
+    }).join('');
+    var tableHtml = '<div class="table-wrap"><table><thead><tr>' +
+      '<th>工厂</th><th>剩余库存数量</th><th>预警阈值</th><th>寄出累计</th><th>扣减累计</th><th>状态</th>' +
+      '</tr></thead><tbody>' + tableRows + '</tbody></table></div>';
+    container.innerHTML = summaryHtml + tableHtml;
   }
 
   function renderAntifakeStockPanel() {
@@ -1429,7 +1764,7 @@
       list = list.filter(function (m) { return m.factory === selectedAntifakeFactory; });
       if (filterLabel) filterLabel.innerHTML = '<strong>' + escapeHTML(selectedAntifakeFactory) + '</strong> · 点击卡片取消筛选';
     } else {
-      if (filterLabel) filterLabel.textContent = '全部工厂 · 点击上方卡片可单独筛选某工厂';
+      if (filterLabel) filterLabel.textContent = '全部工厂 · 切换到「防伪标库存管理」点击卡片可单独筛选某工厂';
     }
 
     if (!list.length) {
@@ -1577,7 +1912,7 @@
       var items = scoped.filter(function (p) { return monthKey(parseYMD(p.dueDate) || today()) === m; });
       var waitPay = items.filter(function (p) { return p.paymentStatus !== '已付款'; }).length;
       var paid = items.filter(function (p) { return p.paymentStatus === '已付款'; }).length;
-      var waitInvoice = items.filter(function (p) { return p.invoiceStatus !== '已开票'; }).length;
+      var waitInvoice = items.filter(function (p) { return p.invoiceStatus !== '已开票' && p.invoiceStatus !== '无需开票'; }).length;
       var invoiced = items.filter(function (p) { return p.invoiceStatus === '已开票'; }).length;
       var waitPayAmount = items.filter(function (p) { return p.paymentStatus !== '已付款'; }).reduce(function (sum, p) {
         return sum + financePaymentRemainingAmount(p);
@@ -1625,13 +1960,15 @@
         '<td>' + escapeHTML(p.requester || '') + '</td>' +
         '<td>' + escapeHTML(formatDate(p.dueDate) || '') + '</td>' +
         '<td><span class="status ' + (p.paymentStatus === '已付款' ? 'done' : statusClass('待跟进', p.dueDate)) + '">' + escapeHTML(p.paymentStatus) + '</span></td>' +
-        '<td><span class="status ' + (p.invoiceStatus === '已开票' ? 'done' : (p.invoiceStatus === '部分开票' ? 'doing' : 'pending')) + '">' + escapeHTML(p.invoiceStatus) + '</span>' +
-          '<div class="muted">已开票：' + escapeHTML(formatCurrency(invoiceAmount) || '￥0.00') + '</div>' +
-          '<div class="muted">剩余待开：' + escapeHTML(formatCurrency(invoiceRemaining) || '￥0.00') + '</div></td>' +
+        '<td><span class="status ' + (p.invoiceStatus === '已开票' ? 'done' : (p.invoiceStatus === '部分开票' ? 'doing' : (p.invoiceStatus === '无需开票' ? 'idle' : 'pending'))) + '">' + escapeHTML(p.invoiceStatus) + '</span>' +
+          (p.invoiceStatus === '无需开票' ? '' :
+            '<div class="muted">已开票：' + escapeHTML(formatCurrency(invoiceAmount) || '￥0.00') + '</div>' +
+            '<div class="muted">剩余待开：' + escapeHTML(formatCurrency(invoiceRemaining) || '￥0.00') + '</div>') + '</td>' +
         '<td>' + escapeHTML(p.note || '') + flowHtml + invoiceFlowHtml + '</td>' +
         '<td><div class="record-actions">' +
         '<button data-finance-action="partialPay" data-payment-id="' + p.id + '">登记分批付款</button>' +
-        '<button data-finance-action="partialInvoice" data-payment-id="' + p.id + '">登记分批开票</button>' +
+        (p.invoiceStatus === '无需开票' ? '' : '<button data-finance-action="partialInvoice" data-payment-id="' + p.id + '">登记分批开票</button>') +
+        (p.invoiceStatus === '无需开票' ? '' : '<button data-finance-action="noInvoice" data-payment-id="' + p.id + '">标记无需开票</button>') +
         '<button data-finance-action="delete" data-payment-id="' + p.id + '">删除</button>' +
         '</div></td>' +
         '</tr>';
@@ -1670,6 +2007,7 @@
       return;
     }
     if (action === 'invoiced') markFinancePaymentInvoiced(payment);
+    if (action === 'noInvoice') markFinancePaymentNoInvoice(payment);
     saveState();
     renderAll();
   }
@@ -1695,7 +2033,7 @@
       if (financeListFilter.month && key !== financeListFilter.month) return false;
       if (financeListFilter.status === 'waitPay') return p.paymentStatus !== '已付款';
       if (financeListFilter.status === 'paid') return p.paymentStatus === '已付款';
-      if (financeListFilter.status === 'waitInvoice') return p.invoiceStatus !== '已开票';
+      if (financeListFilter.status === 'waitInvoice') return p.invoiceStatus !== '已开票' && p.invoiceStatus !== '无需开票';
       return true;
     });
   }
@@ -1777,6 +2115,7 @@
 
   function syncFinancePaymentInvoiceStatus(payment) {
     if (!payment) return;
+    if (payment.invoiceStatus === '无需开票') return;
     var total = financePaymentTotalAmount(payment);
     var invoiced = financePaymentInvoicedAmount(payment);
     if (payment.invoiceStatus === '已开票' && !invoiced && total) {
@@ -2670,6 +3009,18 @@
     payment.history.push({ time: payment.updatedAt, action: '标记已开票' });
     updateSettlementLinkedRecord(payment.recordId, {
       note: (payment.note || '') + '；发票已开。'
+    });
+  }
+
+  function markFinancePaymentNoInvoice(payment) {
+    if (!payment) return;
+    payment.invoiceStatus = '无需开票';
+    payment.invoiceAt = '';
+    payment.updatedAt = nowISO();
+    payment.history = payment.history || [];
+    payment.history.push({ time: payment.updatedAt, action: '标记无需开票' });
+    updateSettlementLinkedRecord(payment.recordId, {
+      note: (payment.note || '') + '；标记无需开票。'
     });
   }
 
@@ -3767,6 +4118,33 @@
       detailTable +
       '<h4 style="margin:12px 0 8px;">底部汇总</h4>' +
       '<div class="po-summary-grid">' + footerCards + '</div>' +
+      (function () {
+        var factory = single.supplier || '';
+        var isExempt = factory && state.antifakeExempt[factory];
+        var ratioInput = $('antifakeUseRatio');
+        var ratioStr = ratioInput ? ratioInput.value : '1:1';
+        var ratio = parseAntifakeRatio(ratioStr);
+        var totalQty = Number(single.qty || 0);
+        var deduction = ratio && totalQty ? Math.ceil(totalQty * ratio) : 0;
+        var currentStock = factory ? Number(state.antifakeStock[factory] || 0) : 0;
+        var afterStock = currentStock - deduction;
+        if (isExempt) {
+          return '<div class="feedback-item" style="margin-top:10px;">防伪标扣减：已跳过 — 该工厂（' + escapeHTML(factory) + '）已标记无需寄标</div>';
+        }
+        if (!factory) {
+          return '<div class="feedback-item" style="margin-top:10px;">防伪标扣减：未识别供应商，跳过自动扣减</div>';
+        }
+        if (!ratio) {
+          return '<div class="feedback-item" style="margin-top:10px;color:var(--danger);">防伪标扣减：使用比例格式无效，请修改后再确认</div>';
+        }
+        return '<div class="feedback-item" style="margin-top:10px;">防伪标自动扣减预览：工厂 ' + escapeHTML(factory) +
+          ' · 使用比例 ' + escapeHTML(ratioStr) +
+          ' · 订单数量 ' + totalQty +
+          ' · 预计扣减 ' + deduction + ' 个' +
+          ' · 当前余量 ' + currentStock +
+          ' · 扣减后余量 ' + Math.max(0, afterStock) +
+          (afterStock < 0 ? '（余量不足！）' : '') + '</div>';
+      })() +
       '<div class="record-actions" style="margin-top:12px;">' +
       '<button class="btn primary" id="confirmPurchaseOrderImportBtn" type="button">确认识别并进入流转</button>' +
       '<button class="btn" id="cancelPurchaseOrderImportBtn" type="button">取消</button>' +
@@ -3908,6 +4286,7 @@
       addedOrders++;
     }
     var updatedInventory = applyPurchaseOrderInventoryReceipt(group, record, parsed.fileName);
+    var antifakeResult = applyAntifakeOrderDeduction(group, parsed.fileName);
     if (upsertPurchaseOrderPayment(group, record, amount, parsed.fileName)) updatedPayments++;
     syncEmailOrderFactory(group.orderNo, group.supplier);
     saveState();
@@ -3918,7 +4297,13 @@
     switchSection('finance');
     var panel = $('financePaymentPanel');
     if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    toast('已完成采购单识别并进入流转：库存入库 ' + updatedInventory + ' 行，财务待付款 ' + updatedPayments + ' 笔');
+    var toastMsg = '已完成采购单识别并进入流转：库存入库 ' + updatedInventory + ' 行，财务待付款 ' + updatedPayments + ' 笔';
+    if (antifakeResult && !antifakeResult.skipped) {
+      toastMsg += '；防伪标自动扣减 ' + antifakeResult.factory + '：' + antifakeResult.deducted + ' 个（比例 ' + antifakeResult.ratio + '，剩余 ' + antifakeResult.after + '）';
+    } else if (antifakeResult && antifakeResult.skipped && antifakeResult.factory) {
+      toastMsg += '；防伪标扣减已跳过：' + antifakeResult.factory + '（' + antifakeResult.reason + '）';
+    }
+    toast(toastMsg);
   }
 
   function applyPurchaseOrderInventoryReceipt(group, record, fileName) {
@@ -4488,6 +4873,95 @@
     toast('已新增供应商：' + name);
   }
 
+  function openRenameSupplierModal(oldName) {
+    if (!oldName) return;
+    var modal = document.createElement('div');
+    modal.className = 'modal-backdrop show';
+    modal.id = 'renameSupplierModal';
+    modal.innerHTML =
+      '<div class="modal" style="max-width:440px;">' +
+      '<div class="modal-header"><h3>修改供应商名称</h3><button class="icon-btn" id="closeRenameSupplierModalBtn" type="button">×</button></div>' +
+      '<form id="renameSupplierForm" class="modal-body">' +
+      '<div class="quick-feedback" style="display:block;margin-bottom:12px;">' +
+      '<div class="feedback-item updated">当前名称：<strong>' + escapeHTML(oldName) + '</strong></div></div>' +
+      '<div class="form-grid"><div class="field wide">' +
+      '<label for="renameSupplierInput">新供应商名称</label>' +
+      '<input id="renameSupplierInput" placeholder="请输入新的供应商名称" required>' +
+      '</div></div>' +
+      '<div class="record-actions" style="justify-content:flex-end;margin-top:14px;">' +
+      '<button class="btn" id="cancelRenameSupplierBtn" type="button">取消</button>' +
+      '<button class="btn primary" type="submit">确认修改</button>' +
+      '</div></form></div>';
+    document.body.appendChild(modal);
+    var input = $('renameSupplierInput');
+    if (input) { input.focus(); input.value = oldName; input.select(); }
+    var close = function () { if (modal && modal.parentNode) modal.parentNode.removeChild(modal); };
+    $('closeRenameSupplierModalBtn').addEventListener('click', close);
+    $('cancelRenameSupplierBtn').addEventListener('click', close);
+    modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+    $('renameSupplierForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var newName = input.value.trim();
+      if (!newName) { toast('供应商名称不能为空'); return; }
+      if (newName === oldName) { toast('名称未变更'); close(); return; }
+      if (factories.indexOf(newName) >= 0) { toast('已存在同名供应商，请使用其他名称'); return; }
+      confirmRenameSupplier(oldName, newName);
+      close();
+    });
+  }
+
+  function confirmRenameSupplier(oldName, newName) {
+    try {
+      var supplier = state.suppliers.find(function (s) { return s.name === oldName; });
+      if (supplier) supplier.name = newName;
+      state.records.forEach(function (r) { if (r.factory === oldName) r.factory = newName; });
+      if (state.factoryInventory && state.factoryInventory[oldName]) {
+        state.factoryInventory[newName] = state.factoryInventory[oldName];
+        delete state.factoryInventory[oldName];
+      }
+      if (state.factoryInventoryMovements) {
+        state.factoryInventoryMovements.forEach(function (m) { if (m.factory === oldName) m.factory = newName; });
+      }
+      if (state.antifakeStock && typeof state.antifakeStock[oldName] !== 'undefined') {
+        state.antifakeStock[newName] = state.antifakeStock[oldName];
+        delete state.antifakeStock[oldName];
+      }
+      if (state.antifakeThresholds && typeof state.antifakeThresholds[oldName] !== 'undefined') {
+        state.antifakeThresholds[newName] = state.antifakeThresholds[oldName];
+        delete state.antifakeThresholds[oldName];
+      }
+      if (state.antifakeExempt && typeof state.antifakeExempt[oldName] !== 'undefined') {
+        state.antifakeExempt[newName] = state.antifakeExempt[oldName];
+        delete state.antifakeExempt[oldName];
+      }
+      if (state.antifakeExemptNote && typeof state.antifakeExemptNote[oldName] !== 'undefined') {
+        state.antifakeExemptNote[newName] = state.antifakeExemptNote[oldName];
+        delete state.antifakeExemptNote[oldName];
+      }
+      if (state.antifakeMovements) {
+        state.antifakeMovements.forEach(function (m) { if (m.factory === oldName) m.factory = newName; });
+      }
+      if (state.settlementFlows) {
+        state.settlementFlows.forEach(function (f) { if (f.factory === oldName) f.factory = newName; });
+      }
+      if (state.financePayments) {
+        state.financePayments.forEach(function (p) { if (p.factory === oldName) p.factory = newName; });
+      }
+      if (state.settlementBills) {
+        state.settlementBills.forEach(function (b) { if (b.factory === oldName) b.factory = newName; });
+      }
+      if (selectedFactory === oldName) selectedFactory = newName;
+      syncFactories();
+      saveState();
+      renderSelects();
+      renderAll();
+      toast('已将供应商「' + oldName + '」重命名为「' + newName + '」，全部关联数据已同步更新');
+    } catch (err) {
+      console.error('修改供应商名称失败', err);
+      toast('修改供应商名称失败：' + (err.message || '未知错误'));
+    }
+  }
+
   function deleteSupplier(name) {
     if (!name) return;
     var records = state.records.filter(function (r) { return r.factory === name; });
@@ -4567,6 +5041,76 @@
     };
     state.antifakeMovements.unshift(record);
     return record;
+  }
+
+  function parseAntifakeRatio(str) {
+    if (!str) return null;
+    var text = String(str).trim();
+    var m = text.match(/^(\d+(?:\.\d+)?)\s*[:：]\s*(\d+(?:\.\d+)?)$/);
+    var products, labels;
+    if (m) {
+      products = parseFloat(m[1]);
+      labels = parseFloat(m[2]);
+    } else {
+      var n = parseFloat(text);
+      if (isNaN(n) || n <= 0) return null;
+      products = n;
+      labels = 1;
+    }
+    if (products <= 0) return null;
+    return labels / products;
+  }
+
+  function applyAntifakeOrderDeduction(group, fileName) {
+    var factory = group.supplier || '';
+    if (!factory) return { factory: '', deducted: 0, skipped: true, reason: '未识别供应商' };
+    if (state.antifakeExempt[factory]) {
+      return { factory: factory, deducted: 0, skipped: true, reason: '该工厂已标记无需寄标' };
+    }
+    var ratioInput = $('antifakeUseRatio');
+    var ratioStr = ratioInput ? ratioInput.value : '1:1';
+    var ratio = parseAntifakeRatio(ratioStr);
+    if (!ratio || ratio <= 0) {
+      return { factory: factory, deducted: 0, skipped: true, reason: '防伪标使用比例格式无效' };
+    }
+    var totalQty = Number(group.qty || 0);
+    if (!totalQty) {
+      (group.items || []).forEach(function (item) { totalQty += Number(item.qty || 0); });
+    }
+    if (!totalQty) {
+      return { factory: factory, deducted: 0, skipped: true, reason: '订单合计数量为0' };
+    }
+    var deduction = Math.ceil(totalQty * ratio);
+    if (deduction <= 0) {
+      return { factory: factory, deducted: 0, skipped: true, reason: '计算扣减数量为0' };
+    }
+    if (typeof state.antifakeStock[factory] !== 'number') state.antifakeStock[factory] = 0;
+    var before = state.antifakeStock[factory];
+    state.antifakeStock[factory] = Math.max(0, before - deduction);
+    var actualDeducted = before - state.antifakeStock[factory];
+    var record = {
+      id: makeId(),
+      type: 'use',
+      factory: factory,
+      qty: actualDeducted,
+      date: toYMD(today()),
+      note: '采购订单自动扣减 · 使用比例 ' + ratioStr + ' · 订单数量 ' + totalQty + ' · 来源文件 ' + (fileName || ''),
+      orderNo: group.orderNo || '',
+      orderQty: totalQty,
+      category: '',
+      labelSize: '',
+      source: 'auto_order',
+      createdAt: nowISO()
+    };
+    state.antifakeMovements.unshift(record);
+    state.operationLogs = state.operationLogs || [];
+    state.operationLogs.unshift({
+      time: nowISO(),
+      action: '采购订单防伪标自动扣减',
+      detail: factory + ' / 订单 ' + (group.orderNo || '') + ' / 订单数量 ' + totalQty + ' / 比例 ' + ratioStr + ' / 扣减 ' + actualDeducted + ' / 扣减前 ' + before + ' / 扣减后 ' + state.antifakeStock[factory],
+      factory: factory
+    });
+    return { factory: factory, deducted: actualDeducted, skipped: false, before: before, after: state.antifakeStock[factory], ratio: ratioStr, orderQty: totalQty };
   }
 
   function generateWeekly() {

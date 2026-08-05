@@ -7,6 +7,9 @@
   var session = null;
   var recordId = cfg.recordId || 'procurement-main';
   var ANTIFAKE_LOCAL_KEY = 'of_antifake_local_records_v1';
+  var AUTO_SAVE_INTERVAL_MS = 10000;
+  var autoSaveTimer = null;
+  var autoSaveInFlight = false;
 
   function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (m) {
@@ -180,6 +183,19 @@
       });
   }
 
+  function startAutoSave() {
+    if (autoSaveTimer) return;
+    autoSaveTimer = window.setInterval(function () {
+      if (autoSaveInFlight) return;
+      autoSaveInFlight = true;
+      saveData(false).then(function () {
+        autoSaveInFlight = false;
+      }).catch(function () {
+        autoSaveInFlight = false;
+      });
+    }, AUTO_SAVE_INTERVAL_MS);
+  }
+
   window.PROCUREMENT_CLOUD = {
     loadData: loadData,
     saveData: saveData
@@ -190,6 +206,8 @@
     renderDisabled();
     return;
   }
+
+  startAutoSave();
 
   client = window.supabase.createClient(cfg.url, cfg.anonKey);
   client.auth.getSession().then(function (res) {
