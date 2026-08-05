@@ -35,7 +35,7 @@
           '<input id="cloudPassword" type="password" placeholder="密码" autocomplete="current-password" />' +
           '<button id="cloudLoginBtn">登录云端</button>' +
         '</div>' +
-        '<div id="cloudStatusText" class="cloud-status">登录后会自动读取云端最新库存；确认上传后会自动保存到云端。</div>';
+        '<div id="cloudStatusText" class="cloud-status">登录后会自动读取云端最新库存；完成上传确认后，请点击“一键保存”同步到云端。</div>';
       document.getElementById('cloudLoginBtn').addEventListener('click', signIn);
       return;
     }

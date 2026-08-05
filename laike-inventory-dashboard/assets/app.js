@@ -16,14 +16,14 @@
       return false;
     }
   }
-  function saveCurrentData() {
+  function saveCurrentData(syncCloud) {
     try {
       var data = window.LAIKE_DASHBOARD_DATA;
       if (!data || !data.rows) return false;
       if (!data.meta) data.meta = {};
       data.meta.savedAt = nowText();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      if (window.LAIKE_CLOUD && window.LAIKE_CLOUD.saveData) {
+      if (syncCloud !== false && window.LAIKE_CLOUD && window.LAIKE_CLOUD.saveData) {
         window.LAIKE_CLOUD.saveData(data);
       }
       return true;

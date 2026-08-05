@@ -71,8 +71,11 @@
   var selectedAntifakeFactory = '';
   var showAntifakeExemptFactories = false;
   var libraryQuickFilter = '';
+  var orderQuickFilter = '';
+  var financeListFilter = null;
   var selectedOrderIds = [];
   var pendingPurchaseOrderImport = null;
+  var pendingPdfPurchaseOrderImport = null;
   ensureStateShape();
   syncFactories();
 
@@ -356,6 +359,10 @@
     state.deletedSuppliers = Array.isArray(state.deletedSuppliers) ? state.deletedSuppliers : [];
     state.operationLogs = Array.isArray(state.operationLogs) ? state.operationLogs : [];
     state.customEmailTemplates = Array.isArray(state.customEmailTemplates) ? state.customEmailTemplates : [];
+    // 工厂代管库存总账：按「工厂名称 -> GY号」保存当前库存数量，Excel采购单确认后自动累加。
+    state.factoryInventory = state.factoryInventory && typeof state.factoryInventory === 'object' ? state.factoryInventory : {};
+    // 工厂代管库存流水：记录每一次采购单入库来源，便于从库存回溯到订单号。
+    state.factoryInventoryMovements = Array.isArray(state.factoryInventoryMovements) ? state.factoryInventoryMovements : [];
     state.antifakeThresholds = state.antifakeThresholds && typeof state.antifakeThresholds === 'object' ? state.antifakeThresholds : {};
     state.antifakeExempt = state.antifakeExempt && typeof state.antifakeExempt === 'object' ? state.antifakeExempt : {};
     state.antifakeExemptNote = state.antifakeExemptNote && typeof state.antifakeExemptNote === 'object' ? state.antifakeExemptNote : {};
@@ -373,6 +380,12 @@
       payment.type = payment.type || '临时付款';
       if (payment.amount) payment.amount = normalizeCurrency(payment.amount);
       payment.history = Array.isArray(payment.history) ? payment.history : [];
+      payment.paymentFlows = Array.isArray(payment.paymentFlows) ? payment.paymentFlows : [];
+      payment.paidAmount = Number(payment.paidAmount || 0);
+      payment.invoiceFlows = Array.isArray(payment.invoiceFlows) ? payment.invoiceFlows : [];
+      payment.invoicedAmount = Number(payment.invoicedAmount || 0);
+      syncFinancePaymentPaidStatus(payment);
+      syncFinancePaymentInvoiceStatus(payment);
     });
     state.records.forEach(function (record) {
       record.status = normalizeStatus(record.status);
@@ -423,6 +436,9 @@
       }
       if (supplier.name && typeof state.antifakeExemptNote[supplier.name] !== 'string') {
         state.antifakeExemptNote[supplier.name] = '';
+      }
+      if (supplier.name && !state.factoryInventory[supplier.name]) {
+        state.factoryInventory[supplier.name] = {};
       }
     });
   }
@@ -573,6 +589,21 @@
     $('orderImportForm').addEventListener('submit', onOrderImportSubmit);
     $('orderImportFile').addEventListener('change', onOrderImportFileChange);
     setupPurchaseOrderUpload();
+    setupPurchaseOrderPdfUpload();
+    if ($('orderQuickFilter')) {
+      $('orderQuickFilter').addEventListener('input', function () {
+        orderQuickFilter = $('orderQuickFilter').value.trim();
+        renderTables();
+      });
+    }
+    if ($('clearOrderQuickFilterBtn')) {
+      $('clearOrderQuickFilterBtn').addEventListener('click', function () {
+        orderQuickFilter = '';
+        $('orderQuickFilter').value = '';
+        renderTables();
+      });
+    }
+    if ($('exportPurchaseOrdersExcelBtn')) $('exportPurchaseOrdersExcelBtn').addEventListener('click', exportAllPurchaseOrdersExcel);
     $('applyOrderBulkStatusBtn').addEventListener('click', applyOrderBulkStatus);
     $('completeSelectedOrdersBtn').addEventListener('click', completeSelectedOrders);
     $('deleteSelectedOrdersBtn').addEventListener('click', deleteSelectedOrders);
@@ -600,7 +631,7 @@
     document.querySelectorAll('[data-supplier-tab]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         supplierSubdir = btn.getAttribute('data-supplier-tab') || 'profile';
-        if (supplierSubdir === 'inventory' && !selectedFactory) selectedFactory = '莱克';
+        if (supplierSubdir === 'inventory') selectedFactory = '';
         renderSupplierSubdir();
         renderFactoryCards();
         renderFactoryInventoryPanel();
@@ -928,7 +959,6 @@
     document.querySelectorAll('[data-supplier-tab]').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-supplier-tab') === supplierSubdir);
     });
-    if (supplierSubdir === 'inventory' && !selectedFactory) selectedFactory = '莱克';
   }
 
   function renderFactoryCards() {
@@ -983,24 +1013,133 @@
     if (!title || !summary || !body) return;
     if (!selectedFactory) {
       title.textContent = '工厂库存管理';
-      summary.textContent = '选择工厂后查看对应库存管理工具';
-      body.innerHTML = '<div class="inventory-empty">请先点击上方工厂卡片。当前已接入：莱克库存管理。</div>';
+      summary.textContent = '选择工厂卡片后进入该工厂专属库存管理页面';
+      body.innerHTML = renderInventoryFactoryDirectoryHTML();
+      bindInventoryFactoryDirectory();
       return;
     }
     title.textContent = selectedFactory + '・工厂库存管理';
+    var localInventoryHtml = renderFactoryManagedInventoryHTML(selectedFactory);
     if (selectedFactory === '莱克') {
-      summary.textContent = '已接入莱克进销存模块，可在当前工作台内查看和维护。';
+      summary.textContent = '单HTML内置库存台账；可通过“莱克专属库存”进入订单出货看板。';
       body.innerHTML =
-        '<div class="pill-row" style="margin-bottom:12px;">' +
-        '<span class="pill">莱克库存</span>' +
-        '<span class="pill">工厂订单出货</span>' +
-        '<a class="btn" href="./laike-inventory-dashboard/laike-inventory-dashboard.html" target="_blank" rel="noopener">新窗口打开</a>' +
-        '</div>' +
-        '<iframe class="inventory-frame" src="./laike-inventory-dashboard/laike-inventory-dashboard.html" title="莱克库存管理"></iframe>';
+        localInventoryHtml +
+        '<div class="inventory-empty">后续采购单确认流转产生的入库数量，会继续显示在上方“工厂代管库存（GY号主键）”和“最近入库流水”中；莱克订单出货扣减请进入“莱克专属库存”。</div>';
+      bindFactoryInventoryActions();
       return;
     }
-    summary.textContent = '该工厂暂未接入独立库存管理程序';
-    body.innerHTML = '<div class="inventory-empty">当前选择的是「' + escapeHTML(selectedFactory) + '」。这个工厂暂未接入库存管理程序；后续可以按莱克的方式继续接入。</div>';
+    summary.textContent = '显示 Excel 采购单确认流转后自动累计的工厂代管库存。';
+    body.innerHTML = localInventoryHtml;
+    bindFactoryInventoryActions();
+  }
+
+  function renderInventoryFactoryDirectoryHTML() {
+    var cards = state.suppliers.map(function (supplier) {
+      var factory = supplier.name;
+      var stocks = factoryInventoryStockRows(factory);
+      var totalQty = stocks.reduce(function (sum, item) { return sum + Number(item.库存数量 || 0); }, 0);
+      var latest = factoryLatestInventoryMovement(factory);
+      var laikeLink = factory === '莱克'
+        ? '<a class="btn primary" href="./laike-inventory-dashboard/laike-inventory-dashboard.html" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px;padding:6px 10px;min-height:auto;">莱克专属库存</a>'
+        : '';
+      return '<div class="factory-card" data-inventory-factory-card="' + escapeHTML(factory) + '"><div><h4>' + escapeHTML(factory) + '</h4>' +
+        '<p>主营：' + escapeHTML(supplier.products || '未填写') + '</p>' +
+        '<p>库存型号 ' + stocks.length + ' 个 · 当前库存总数 ' + totalQty + '</p>' +
+        '<p>' + escapeHTML(latest ? ('最近更新：订单 ' + (latest.orderNo || '未填') + ' / ' + shortTime(latest.createdAt)) : '暂无库存流水') + '</p>' +
+        '</div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">' +
+        laikeLink +
+        '<span class="status ' + (stocks.length ? 'doing' : 'pending') + '">' + (stocks.length ? '查看库存' : '暂无库存') + '</span>' +
+        '</div></div>';
+    }).join('');
+    return '<div class="pill-row" style="margin-bottom:12px;">' +
+      '<span class="pill">点击工厂卡片进入库存</span>' +
+      '<span class="pill">按 GY 号统计库存</span>' +
+      '<span class="pill">扣减后自动保存</span>' +
+      '</div><div class="grid cols-3">' + cards + '</div>';
+  }
+
+  function bindInventoryFactoryDirectory() {
+    var body = $('factoryInventoryBody');
+    if (!body) return;
+    body.querySelectorAll('[data-inventory-factory-card]').forEach(function (card) {
+      card.addEventListener('click', function () {
+        selectedFactory = card.getAttribute('data-inventory-factory-card') || '';
+        renderFactoryInventoryPanel();
+      });
+    });
+  }
+
+  function renderFactoryManagedInventoryHTML(factory) {
+    var inventoryMap = state.factoryInventory && state.factoryInventory[factory] ? state.factoryInventory[factory] : {};
+    var stocks = Object.keys(inventoryMap).map(function (gy) { return inventoryMap[gy]; }).sort(function (a, b) {
+      return String(a.gyModel || '').localeCompare(String(b.gyModel || ''));
+    });
+    var movements = (state.factoryInventoryMovements || []).filter(function (m) { return m.factory === factory; }).slice(0, 20);
+    var totalQty = stocks.reduce(function (sum, item) { return sum + Number(item.qty || 0); }, 0);
+    var currentOrderNo = factoryLatestPurchaseOrderNo(factory);
+    var laikeDedicatedLink = factory === '莱克'
+      ? '<a class="btn primary" href="./laike-inventory-dashboard/laike-inventory-dashboard.html" target="_blank" rel="noopener">莱克专属库存</a>'
+      : '';
+    var stockRows = stocks.map(function (item) {
+      var latest = factoryLatestInventoryMovement(factory, item.gyModel);
+      return '<tr>' +
+        '<td>' + escapeHTML((latest && latest.orderNo) || item.orderNo || '') + '</td>' +
+        '<td>' + escapeHTML(item.gyModel || '') + '</td>' +
+        '<td>' + escapeHTML(item.productName || '') + '</td>' +
+        '<td>' + escapeHTML(item.qty || 0) + '</td>' +
+        '<td>' + escapeHTML(shortTime(item.updatedAt)) + '</td>' +
+        '<td><div class="record-actions" style="gap:6px;flex-wrap:nowrap;">' +
+        '<input data-inventory-deduct-gy="' + escapeHTML(item.gyModel || '') + '" type="number" min="0" step="1" placeholder="扣减数量" style="width:96px;border:1px solid var(--line);border-radius:8px;padding:6px 8px;">' +
+        '<button class="btn" data-inventory-deduct-btn="' + escapeHTML(item.gyModel || '') + '" type="button">确认扣减</button>' +
+        '</div></td>' +
+        '</tr>';
+    }).join('');
+    var movementRows = movements.map(function (m) {
+      var moveQty = Number(m.qty || 0);
+      return '<tr>' +
+        '<td>' + escapeHTML(shortTime(m.createdAt)) + '</td>' +
+        '<td>' + escapeHTML(m.orderNo || '') + '</td>' +
+        '<td>' + escapeHTML(m.gyModel || '') + '</td>' +
+        '<td>' + escapeHTML(m.productName || '') + '</td>' +
+        '<td>' + escapeHTML((moveQty > 0 ? '+' : '') + moveQty) + '</td>' +
+        '<td>' + escapeHTML(m.sourceFile || '') + '</td>' +
+        '</tr>';
+    }).join('');
+    return '<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:14px;">' +
+      '<div class="card-header"><h3>工厂代管库存（GY号主键）</h3><span>当前型号 ' + stocks.length + ' 个，库存总数 ' + totalQty + '</span></div>' +
+      '<div class="card-body">' +
+      '<div class="po-backup-notice">提示：库存数据保存在本浏览器 localStorage。浏览器缓存有丢失风险，建议定期导出库存备份文件长期保存。</div>' +
+      '<div class="record-actions" style="margin:8px 0 12px;">' +
+      '<button class="btn" id="backInventoryDirectoryBtn" type="button">返回工厂库存首页</button>' +
+      laikeDedicatedLink +
+      '<button class="btn primary" id="deductCurrentOrderInventoryBtn" type="button"' + (currentOrderNo ? '' : ' disabled') + '>按当前订单一键扣减库存' + (currentOrderNo ? '（' + escapeHTML(currentOrderNo) + '）' : '') + '</button>' +
+      '<button class="btn primary" id="exportFactoryInventoryBtn" type="button">导出库存备份</button></div>' +
+      (stockRows ? '<div class="table-wrap"><table><thead><tr><th>订单号</th><th>GY号</th><th>品名</th><th>库存数量</th><th>最后更新时间</th><th>手动扣减</th></tr></thead><tbody>' + stockRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无 Excel 采购单入库库存。确认 Excel 采购单后会按 GY 号自动累加。</div>') +
+      '<h4 style="margin:14px 0 8px;">最近入库流水</h4>' +
+      (movementRows ? '<div class="table-wrap"><table><thead><tr><th>时间</th><th>来源订单号</th><th>GY号</th><th>品名</th><th>数量变动</th><th>来源文件</th></tr></thead><tbody>' + movementRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无入库流水。</div>') +
+      '</div></div>';
+  }
+
+  function bindFactoryInventoryActions() {
+    var btn = $('exportFactoryInventoryBtn');
+    if (btn) btn.addEventListener('click', exportFactoryInventoryBackup);
+    var backBtn = $('backInventoryDirectoryBtn');
+    if (backBtn) backBtn.addEventListener('click', function () {
+      selectedFactory = '';
+      renderFactoryInventoryPanel();
+    });
+    var orderBtn = $('deductCurrentOrderInventoryBtn');
+    if (orderBtn) orderBtn.addEventListener('click', deductCurrentOrderInventory);
+    var body = $('factoryInventoryBody');
+    if (!body) return;
+    body.querySelectorAll('[data-inventory-deduct-btn]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var gy = btn.getAttribute('data-inventory-deduct-btn') || '';
+        var input = body.querySelector('[data-inventory-deduct-gy="' + gy.replace(/"/g, '\\"') + '"]');
+        var qty = input ? parseNumberLike(input.value) : 0;
+        deductFactoryInventoryItem(selectedFactory, gy, qty, '手动扣减', '');
+      });
+    });
   }
 
   function renderFactoryFollowTable(records) {
@@ -1105,7 +1244,7 @@
 
   function renderTables() {
     renderTable('supplierTable', filterByModule('suppliers'));
-    renderTable('orderTable', filterByModule('orders'));
+    renderTable('orderTable', filterOrderRecords());
     renderTable('financeTable', filterByModule('finance'));
     renderTable('reconciliationTable', filterByModule('reconciliation'));
     renderTable('antifakeTable', filterByModule('antifake'));
@@ -1426,7 +1565,7 @@
     });
     var totalWaitPay = scoped.filter(function (p) { return p.paymentStatus !== '已付款'; }).length;
     var totalWaitPayAmount = scoped.filter(function (p) { return p.paymentStatus !== '已付款'; }).reduce(function (sum, p) {
-      return sum + currencyNumber(p.amount);
+      return sum + financePaymentRemainingAmount(p);
     }, 0);
     var totalCard = '<div class="finance-month-card" style="margin-bottom:14px;">' +
       '<h4>7月 / 8月 / 9月待付款总台</h4>' +
@@ -1441,45 +1580,73 @@
       var waitInvoice = items.filter(function (p) { return p.invoiceStatus !== '已开票'; }).length;
       var invoiced = items.filter(function (p) { return p.invoiceStatus === '已开票'; }).length;
       var waitPayAmount = items.filter(function (p) { return p.paymentStatus !== '已付款'; }).reduce(function (sum, p) {
-        return sum + currencyNumber(p.amount);
+        return sum + financePaymentRemainingAmount(p);
       }, 0);
       return '<div class="finance-month-card">' +
         '<h4>' + escapeHTML(m) + '</h4>' +
         '<div class="finance-kpis">' +
-        '<div class="finance-kpi danger"><span>待付款</span><strong>' + waitPay + '</strong></div>' +
+        '<div class="finance-kpi danger clickable-card" data-finance-filter-month="' + escapeHTML(m) + '" data-finance-filter-status="waitPay" title="点击只看' + escapeHTML(m) + '待付款订单"><span>待付款</span><strong>' + waitPay + '</strong></div>' +
         '<div class="finance-kpi danger"><span>待付款金额</span><strong>' + escapeHTML(formatCurrency(waitPayAmount) || '￥0.00') + '</strong></div>' +
-        '<div class="finance-kpi success"><span>已付款</span><strong>' + paid + '</strong></div>' +
-        '<div class="finance-kpi warning"><span>待开票</span><strong>' + waitInvoice + '</strong></div>' +
+        '<div class="finance-kpi success clickable-card" data-finance-filter-month="' + escapeHTML(m) + '" data-finance-filter-status="paid" title="点击只看' + escapeHTML(m) + '已付款订单"><span>已付款</span><strong>' + paid + '</strong></div>' +
+        '<div class="finance-kpi warning clickable-card" data-finance-filter-month="' + escapeHTML(m) + '" data-finance-filter-status="waitInvoice" title="点击只看' + escapeHTML(m) + '待开票订单"><span>待开票</span><strong>' + waitInvoice + '</strong></div>' +
         '<div class="finance-kpi success"><span>已开票</span><strong>' + invoiced + '</strong></div>' +
         '</div></div>';
     }).join('');
     if (!scoped.length) {
       panel.innerHTML = totalCard + '<div class="finance-month-grid">' + cards + '</div><div class="empty">7月、8月、9月暂无付款/开票记录。月结下推到付款或添加临时付款后会自动显示。</div>';
+      bindFinanceFilterCards(panel);
       return;
     }
-    var rows = scoped.map(function (p) {
+    var list = applyFinanceListFilter(scoped);
+    var filterBar = financeListFilter
+      ? '<div class="quick-feedback" style="display:block;margin:12px 0;"><div class="feedback-item updated">当前筛选：' + escapeHTML(financeFilterLabel(financeListFilter)) + '，共 ' + list.length + ' 笔。<button class="btn" id="clearFinanceListFilterBtn" type="button" style="margin-left:10px;">显示全部</button></div></div>'
+      : '';
+    var rows = list.map(function (p) {
       var billNo = p.orderNo || p.kingdeeNo || '待补单号';
+      syncFinancePaymentPaidStatus(p);
+      syncFinancePaymentInvoiceStatus(p);
+      var totalAmount = financePaymentTotalAmount(p);
+      var paidAmount = financePaymentPaidAmount(p);
+      var remainingAmount = financePaymentRemainingAmount(p);
+      var percent = totalAmount ? (paidAmount / totalAmount * 100) : 0;
+      var flowHtml = financePaymentFlowHTML(p);
+      var invoiceAmount = financePaymentInvoicedAmount(p);
+      var invoiceRemaining = financePaymentInvoiceRemainingAmount(p);
+      var invoiceFlowHtml = financeInvoiceFlowHTML(p);
       return '<tr>' +
         '<td>' + escapeHTML(p.type || '') + '</td>' +
         '<td>' + escapeHTML(p.factory || '未指定') + '</td>' +
         '<td><span class="mono">' + escapeHTML(billNo) + '</span></td>' +
-        '<td>' + escapeHTML(normalizeCurrency(p.amount)) + '</td>' +
+        '<td>' +
+          '<div>总货款：' + escapeHTML(formatCurrency(totalAmount) || normalizeCurrency(p.amount)) + '</div>' +
+          '<div class="muted">已付款：' + escapeHTML(formatCurrency(paidAmount) || '￥0.00') + '（' + percent.toFixed(2) + '%）</div>' +
+          '<div class="muted">剩余待付：' + escapeHTML(formatCurrency(remainingAmount) || '￥0.00') + '</div>' +
+        '</td>' +
         '<td>' + escapeHTML(p.requester || '') + '</td>' +
         '<td>' + escapeHTML(formatDate(p.dueDate) || '') + '</td>' +
         '<td><span class="status ' + (p.paymentStatus === '已付款' ? 'done' : statusClass('待跟进', p.dueDate)) + '">' + escapeHTML(p.paymentStatus) + '</span></td>' +
-        '<td><span class="status ' + (p.invoiceStatus === '已开票' ? 'done' : 'pending') + '">' + escapeHTML(p.invoiceStatus) + '</span></td>' +
-        '<td>' + escapeHTML(p.note || '') + '</td>' +
+        '<td><span class="status ' + (p.invoiceStatus === '已开票' ? 'done' : (p.invoiceStatus === '部分开票' ? 'doing' : 'pending')) + '">' + escapeHTML(p.invoiceStatus) + '</span>' +
+          '<div class="muted">已开票：' + escapeHTML(formatCurrency(invoiceAmount) || '￥0.00') + '</div>' +
+          '<div class="muted">剩余待开：' + escapeHTML(formatCurrency(invoiceRemaining) || '￥0.00') + '</div></td>' +
+        '<td>' + escapeHTML(p.note || '') + flowHtml + invoiceFlowHtml + '</td>' +
         '<td><div class="record-actions">' +
-        (p.paymentStatus !== '已付款' ? '<button data-finance-action="paid" data-payment-id="' + p.id + '">已付款</button>' : '') +
-        (p.invoiceStatus !== '已开票' ? '<button data-finance-action="invoiced" data-payment-id="' + p.id + '">已开票</button>' : '') +
+        '<button data-finance-action="partialPay" data-payment-id="' + p.id + '">登记分批付款</button>' +
+        '<button data-finance-action="partialInvoice" data-payment-id="' + p.id + '">登记分批开票</button>' +
         '<button data-finance-action="delete" data-payment-id="' + p.id + '">删除</button>' +
         '</div></td>' +
         '</tr>';
     }).join('');
-    panel.innerHTML = totalCard + '<div class="finance-month-grid">' + cards + '</div>' +
-      '<div class="table-wrap"><table><thead><tr>' +
+    panel.innerHTML = totalCard + '<div class="finance-month-grid">' + cards + '</div>' + filterBar +
+      (list.length ? '<div class="table-wrap"><table><thead><tr>' +
       '<th>来源</th><th>工厂</th><th>采购单号 / 金蝶单号</th><th>金额</th><th>请款人</th><th>预计付款日</th><th>付款状态</th><th>开票状态</th><th>备注</th><th>操作</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">当前筛选条件下暂无订单。</div>');
+    bindFinanceFilterCards(panel);
+    if ($('clearFinanceListFilterBtn')) {
+      $('clearFinanceListFilterBtn').addEventListener('click', function () {
+        financeListFilter = null;
+        renderFinancePaymentPanel();
+      });
+    }
     panel.querySelectorAll('[data-finance-action]').forEach(function (btn) {
       btn.addEventListener('click', onFinancePaymentAction);
     });
@@ -1494,14 +1661,328 @@
       if (!confirm('确认删除这条财务付款记录？关联普通事项不会删除。')) return;
       state.financePayments = state.financePayments.filter(function (p) { return p.id !== id; });
     }
-    if (action === 'paid') markFinancePaymentPaid(payment);
+    if (action === 'partialPay') {
+      openFinancePartialPaymentModal(payment);
+      return;
+    }
+    if (action === 'partialInvoice') {
+      openFinancePartialInvoiceModal(payment);
+      return;
+    }
     if (action === 'invoiced') markFinancePaymentInvoiced(payment);
     saveState();
     renderAll();
   }
 
+  function bindFinanceFilterCards(panel) {
+    panel.querySelectorAll('[data-finance-filter-status]').forEach(function (card) {
+      card.addEventListener('click', function () {
+        financeListFilter = {
+          month: card.getAttribute('data-finance-filter-month') || '',
+          status: card.getAttribute('data-finance-filter-status') || ''
+        };
+        renderFinancePaymentPanel();
+        var target = $('financePaymentPanel');
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  }
+
+  function applyFinanceListFilter(list) {
+    if (!financeListFilter) return list;
+    return list.filter(function (p) {
+      var key = monthKey(parseYMD(p.dueDate) || today());
+      if (financeListFilter.month && key !== financeListFilter.month) return false;
+      if (financeListFilter.status === 'waitPay') return p.paymentStatus !== '已付款';
+      if (financeListFilter.status === 'paid') return p.paymentStatus === '已付款';
+      if (financeListFilter.status === 'waitInvoice') return p.invoiceStatus !== '已开票';
+      return true;
+    });
+  }
+
+  function financeFilterLabel(filter) {
+    var statusMap = { waitPay: '待付款订单', paid: '已付款订单', waitInvoice: '待开票订单' };
+    return (filter.month || '全部月份') + ' · ' + (statusMap[filter.status] || '全部状态');
+  }
+
+  function financePaymentTotalAmount(payment) {
+    return currencyNumber(payment && payment.amount);
+  }
+
+  function financePaymentPaidAmount(payment) {
+    payment.paymentFlows = Array.isArray(payment.paymentFlows) ? payment.paymentFlows : [];
+    var sum = payment.paymentFlows.reduce(function (total, flow) {
+      return total + Number(flow.amount || 0);
+    }, 0);
+    if (!sum && payment.paymentStatus === '已付款' && financePaymentTotalAmount(payment)) {
+      sum = financePaymentTotalAmount(payment);
+    }
+    payment.paidAmount = sum;
+    return sum;
+  }
+
+  function financePaymentRemainingAmount(payment) {
+    return Math.max(0, financePaymentTotalAmount(payment) - financePaymentPaidAmount(payment));
+  }
+
+  function syncFinancePaymentPaidStatus(payment) {
+    if (!payment) return;
+    var total = financePaymentTotalAmount(payment);
+    var paid = financePaymentPaidAmount(payment);
+    if (payment.paymentStatus === '已付款' && !paid && total) {
+      payment.paidAmount = total;
+      return;
+    }
+    if (total && paid >= total) {
+      payment.paymentStatus = '已付款';
+      if (!payment.paidAt) payment.paidAt = nowISO();
+    } else if (paid > 0) {
+      payment.paymentStatus = '部分付款';
+      payment.paidAt = '';
+    } else if (payment.paymentStatus === '已付款' || payment.paymentStatus === '部分付款') {
+      payment.paymentStatus = '待付款';
+      payment.paidAt = '';
+    }
+  }
+
+  function financePaymentFlowHTML(payment) {
+    var flows = Array.isArray(payment.paymentFlows) ? payment.paymentFlows : [];
+    if (!flows.length) return '';
+    var rows = flows.slice().sort(function (a, b) {
+      return String(b.time || '').localeCompare(String(a.time || ''));
+    }).map(function (flow) {
+      return '<tr><td>' + escapeHTML(shortTime(flow.time)) + '</td>' +
+        '<td>' + escapeHTML(formatCurrency(flow.amount) || '￥0.00') + '</td>' +
+        '<td>' + escapeHTML(Number(flow.percent || 0).toFixed(2) + '%') + '</td></tr>';
+    }).join('');
+    return '<details style="margin-top:8px;"><summary class="muted">查看付款流水（' + flows.length + '笔）</summary>' +
+      '<div class="table-wrap" style="margin-top:6px;"><table><thead><tr><th>付款时间</th><th>付款金额</th><th>付款比例</th></tr></thead><tbody>' + rows + '</tbody></table></div></details>';
+  }
+
+  function financePaymentInvoicedAmount(payment) {
+    payment.invoiceFlows = Array.isArray(payment.invoiceFlows) ? payment.invoiceFlows : [];
+    var sum = payment.invoiceFlows.reduce(function (total, flow) {
+      return total + Number(flow.amount || 0);
+    }, 0);
+    if (!sum && payment.invoiceStatus === '已开票' && financePaymentTotalAmount(payment)) {
+      sum = financePaymentTotalAmount(payment);
+    }
+    payment.invoicedAmount = sum;
+    return sum;
+  }
+
+  function financePaymentInvoiceRemainingAmount(payment) {
+    return Math.max(0, financePaymentTotalAmount(payment) - financePaymentInvoicedAmount(payment));
+  }
+
+  function syncFinancePaymentInvoiceStatus(payment) {
+    if (!payment) return;
+    var total = financePaymentTotalAmount(payment);
+    var invoiced = financePaymentInvoicedAmount(payment);
+    if (payment.invoiceStatus === '已开票' && !invoiced && total) {
+      payment.invoicedAmount = total;
+      return;
+    }
+    if (total && invoiced >= total) {
+      payment.invoiceStatus = '已开票';
+      if (!payment.invoiceAt) payment.invoiceAt = nowISO();
+    } else if (invoiced > 0) {
+      payment.invoiceStatus = '部分开票';
+      payment.invoiceAt = '';
+    } else if (payment.invoiceStatus === '已开票' || payment.invoiceStatus === '部分开票') {
+      payment.invoiceStatus = '待开票';
+      payment.invoiceAt = '';
+    }
+  }
+
+  function financeInvoiceFlowHTML(payment) {
+    var flows = Array.isArray(payment.invoiceFlows) ? payment.invoiceFlows : [];
+    if (!flows.length) return '';
+    var rows = flows.slice().sort(function (a, b) {
+      return String(b.time || '').localeCompare(String(a.time || ''));
+    }).map(function (flow) {
+      return '<tr><td>' + escapeHTML(shortTime(flow.time)) + '</td>' +
+        '<td>' + escapeHTML(formatCurrency(flow.amount) || '￥0.00') + '</td></tr>';
+    }).join('');
+    return '<details style="margin-top:8px;"><summary class="muted">查看开票流水（' + flows.length + '笔）</summary>' +
+      '<div class="table-wrap" style="margin-top:6px;"><table><thead><tr><th>开票时间</th><th>开票金额</th></tr></thead><tbody>' + rows + '</tbody></table></div></details>';
+  }
+
+  function openFinancePartialPaymentModal(payment) {
+    var total = financePaymentTotalAmount(payment);
+    var paid = financePaymentPaidAmount(payment);
+    var remaining = financePaymentRemainingAmount(payment);
+    var modal = document.createElement('div');
+    modal.className = 'modal-backdrop show';
+    modal.id = 'financePartialPaymentModal';
+    modal.innerHTML =
+      '<div class="modal" style="max-width:560px;">' +
+      '<div class="modal-header"><h3>登记分批付款</h3><button class="icon-btn" id="closeFinancePartialPaymentModalBtn" type="button">×</button></div>' +
+      '<form id="financePartialPaymentForm" class="modal-body">' +
+      '<div class="quick-feedback" style="display:block;margin-bottom:12px;">' +
+      '<div class="feedback-item added">总货款：' + escapeHTML(formatCurrency(total) || '￥0.00') +
+      '；已付款：' + escapeHTML(formatCurrency(paid) || '￥0.00') +
+      '；剩余待付款：' + escapeHTML(formatCurrency(remaining) || '￥0.00') + '</div></div>' +
+      '<div class="form-grid">' +
+      '<div class="field wide"><label>录入方式</label><select id="partialPayMode"><option value="amount">自定义本次实付金额</option><option value="percent">按总货款百分比填写</option></select></div>' +
+      '<div class="field" id="partialPayAmountField"><label>本次实付金额</label><input id="partialPayAmount" placeholder="例：5000"></div>' +
+      '<div class="field" id="partialPayPercentField" style="display:none;"><label>付款比例（%）</label><input id="partialPayPercent" placeholder="例：30"></div>' +
+      '<div class="field wide"><label>备注</label><input id="partialPayNote" placeholder="可填写付款批次、凭证或说明"></div>' +
+      '</div>' +
+      '<div class="record-actions" style="justify-content:flex-end;margin-top:14px;">' +
+      '<button class="btn" id="cancelFinancePartialPaymentBtn" type="button">取消</button>' +
+      '<button class="btn primary" type="submit">提交付款</button>' +
+      '</div>' +
+      '</form></div>';
+    document.body.appendChild(modal);
+    var close = function () {
+      if (modal && modal.parentNode) modal.parentNode.removeChild(modal);
+    };
+    $('closeFinancePartialPaymentModalBtn').addEventListener('click', close);
+    $('cancelFinancePartialPaymentBtn').addEventListener('click', close);
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) close();
+    });
+    $('partialPayMode').addEventListener('change', function () {
+      var mode = $('partialPayMode').value;
+      $('partialPayAmountField').style.display = mode === 'amount' ? '' : 'none';
+      $('partialPayPercentField').style.display = mode === 'percent' ? '' : 'none';
+    });
+    $('financePartialPaymentForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      submitFinancePartialPayment(payment, close);
+    });
+  }
+
+  function submitFinancePartialPayment(payment, close) {
+    var total = financePaymentTotalAmount(payment);
+    var remaining = financePaymentRemainingAmount(payment);
+    var mode = $('partialPayMode').value;
+    var amount = 0;
+    var percent = 0;
+    if (mode === 'percent') {
+      percent = parseNumberLike($('partialPayPercent').value);
+      amount = total * percent / 100;
+    } else {
+      amount = parseNumberLike($('partialPayAmount').value);
+      percent = total ? amount / total * 100 : 0;
+    }
+    if (!amount || amount <= 0) {
+      toast('请填写有效的付款金额或比例');
+      return;
+    }
+    if (remaining && amount > remaining) amount = remaining;
+    payment.paymentFlows = Array.isArray(payment.paymentFlows) ? payment.paymentFlows : [];
+    var time = nowISO();
+    payment.paymentFlows.push({
+      id: makeId(),
+      time: time,
+      amount: amount,
+      percent: total ? amount / total * 100 : percent,
+      note: $('partialPayNote') ? $('partialPayNote').value.trim() : ''
+    });
+    payment.updatedAt = time;
+    payment.history = payment.history || [];
+    payment.history.push({ time: time, action: '登记分批付款：' + (formatCurrency(amount) || amount) });
+    syncFinancePaymentPaidStatus(payment);
+    if (payment.paymentStatus === '已付款') {
+      updateSettlementLinkedRecord(payment.recordId, {
+        status: '已完成',
+        orderNo: payment.orderNo || '',
+        nextStep: payment.invoiceStatus === '已开票' ? '' : '等待开票',
+        note: (payment.note || '') + '；付款已完成。'
+      });
+      if (payment.flowId) {
+        var flow = state.settlementFlows.find(function (f) { return f.id === payment.flowId; });
+        if (flow) flow.paymentStatus = '已付款';
+      }
+    }
+    saveState();
+    renderAll();
+    if (close) close();
+    toast('已登记本次付款，剩余待付款已更新');
+  }
+
+  function openFinancePartialInvoiceModal(payment) {
+    var total = financePaymentTotalAmount(payment);
+    var invoiced = financePaymentInvoicedAmount(payment);
+    var remaining = financePaymentInvoiceRemainingAmount(payment);
+    var modal = document.createElement('div');
+    modal.className = 'modal-backdrop show';
+    modal.id = 'financePartialInvoiceModal';
+    modal.innerHTML =
+      '<div class="modal" style="max-width:520px;">' +
+      '<div class="modal-header"><h3>登记分批开票</h3><button class="icon-btn" id="closeFinancePartialInvoiceModalBtn" type="button">×</button></div>' +
+      '<form id="financePartialInvoiceForm" class="modal-body">' +
+      '<div class="quick-feedback" style="display:block;margin-bottom:12px;">' +
+      '<div class="feedback-item added">总货款：' + escapeHTML(formatCurrency(total) || '￥0.00') +
+      '；已开票：' + escapeHTML(formatCurrency(invoiced) || '￥0.00') +
+      '；剩余待开票：' + escapeHTML(formatCurrency(remaining) || '￥0.00') + '</div></div>' +
+      '<div class="form-grid">' +
+      '<div class="field"><label>本次开票金额</label><input id="partialInvoiceAmount" placeholder="例：5000"></div>' +
+      '<div class="field wide"><label>备注</label><input id="partialInvoiceNote" placeholder="可填写发票号、批次或说明"></div>' +
+      '</div>' +
+      '<div class="record-actions" style="justify-content:flex-end;margin-top:14px;">' +
+      '<button class="btn" id="cancelFinancePartialInvoiceBtn" type="button">取消</button>' +
+      '<button class="btn primary" type="submit">提交开票</button>' +
+      '</div>' +
+      '</form></div>';
+    document.body.appendChild(modal);
+    var close = function () {
+      if (modal && modal.parentNode) modal.parentNode.removeChild(modal);
+    };
+    $('closeFinancePartialInvoiceModalBtn').addEventListener('click', close);
+    $('cancelFinancePartialInvoiceBtn').addEventListener('click', close);
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) close();
+    });
+    $('financePartialInvoiceForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      submitFinancePartialInvoice(payment, close);
+    });
+  }
+
+  function submitFinancePartialInvoice(payment, close) {
+    var remaining = financePaymentInvoiceRemainingAmount(payment);
+    var amount = parseNumberLike($('partialInvoiceAmount').value);
+    if (!amount || amount <= 0) {
+      toast('请填写有效的开票金额');
+      return;
+    }
+    if (remaining && amount > remaining) amount = remaining;
+    payment.invoiceFlows = Array.isArray(payment.invoiceFlows) ? payment.invoiceFlows : [];
+    var time = nowISO();
+    payment.invoiceFlows.push({
+      id: makeId(),
+      time: time,
+      amount: amount,
+      note: $('partialInvoiceNote') ? $('partialInvoiceNote').value.trim() : ''
+    });
+    payment.updatedAt = time;
+    payment.history = payment.history || [];
+    payment.history.push({ time: time, action: '登记分批开票：' + (formatCurrency(amount) || amount) });
+    syncFinancePaymentInvoiceStatus(payment);
+    updateSettlementLinkedRecord(payment.recordId, {
+      note: (payment.note || '') + '；已登记开票：' + (formatCurrency(amount) || amount)
+    });
+    saveState();
+    renderAll();
+    if (close) close();
+    toast('已登记本次开票，剩余待开票已更新');
+  }
+
   function filterByModule(moduleId) {
     return state.records.filter(function (r) { return r.module === moduleId; }).sort(byDue);
+  }
+
+  function filterOrderRecords() {
+    var list = filterByModule('orders');
+    var q = String(orderQuickFilter || '').trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(function (r) {
+      var text = [r.orderNo, r.factory, r.content, r.product, r.note].join(' ').toLowerCase();
+      return text.indexOf(q) >= 0;
+    });
   }
 
   function filteredRecords() {
@@ -1588,7 +2069,7 @@
         } else {
           selectedOrderIds = selectedOrderIds.filter(function (id) { return visibleIds.indexOf(id) < 0; });
         }
-        renderTable('orderTable', filterByModule('orders'));
+        renderTable('orderTable', filterOrderRecords());
       });
     }
     $('orderTable').querySelectorAll('[data-order-select]').forEach(function (check) {
@@ -2417,6 +2898,261 @@
     });
   }
 
+  function setupPurchaseOrderPdfUpload() {
+    var drop = $('purchaseOrderPdfDropZone');
+    var input = $('purchaseOrderPdfFileInput');
+    if (!drop || !input) return;
+    drop.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (file) readPurchaseOrderPdfFile(file);
+      input.value = '';
+    });
+    ['dragenter', 'dragover'].forEach(function (eventName) {
+      drop.addEventListener(eventName, function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        drop.classList.add('drag-over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (eventName) {
+      drop.addEventListener(eventName, function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        drop.classList.remove('drag-over');
+      });
+    });
+    drop.addEventListener('drop', function (e) {
+      var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) readPurchaseOrderPdfFile(file);
+    });
+  }
+
+  function readPurchaseOrderPdfFile(file) {
+    var name = file.name || '';
+    if (!/\.pdf$/i.test(name) && file.type !== 'application/pdf') {
+      renderPurchaseOrderUploadMessage('请上传 PDF 格式的采购订单文件。', 'updated');
+      return;
+    }
+    if (!window.pdfjsLib || !window.pdfjsLib.getDocument) {
+      renderPurchaseOrderUploadMessage('PDF 解析库未加载。请使用已打包的单 HTML 版本，或检查页面脚本是否完整。', 'updated');
+      return;
+    }
+    renderPurchaseOrderUploadMessage('正在解析 PDF：' + name + '，请稍等。', 'updated');
+    var reader = new FileReader();
+    reader.onload = function () {
+      var bytes = new Uint8Array(reader.result);
+      // 纯前端读取 PDF 文本；disableWorker 避免本地 file:// 双击时 Worker 路径失效。
+      var task = window.pdfjsLib.getDocument({ data: bytes, disableWorker: true });
+      task.promise.then(function (pdf) {
+        return extractPdfTextByLines(pdf);
+      }).then(function (text) {
+        var parsed = parsePurchaseOrderPdfText(text, name);
+        pendingPdfPurchaseOrderImport = parsed;
+        renderPurchaseOrderPdfPreview(parsed);
+      }).catch(function (err) {
+        renderPurchaseOrderUploadMessage('PDF 解析失败：' + (err && err.message ? err.message : err), 'updated');
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function extractPdfTextByLines(pdf) {
+    var pages = [];
+    for (var p = 1; p <= pdf.numPages; p++) pages.push(p);
+    return Promise.all(pages.map(function (pageNo) {
+      return pdf.getPage(pageNo).then(function (page) {
+        return page.getTextContent().then(function (content) {
+          var lineMap = {};
+          (content.items || []).forEach(function (item) {
+            var text = cleanCell(item.str);
+            if (!text) return;
+            var transform = item.transform || [];
+            var x = Number(transform[4] || 0);
+            var y = Math.round(Number(transform[5] || 0));
+            var key = String(y);
+            lineMap[key] = lineMap[key] || [];
+            lineMap[key].push({ x: x, text: text });
+          });
+          return Object.keys(lineMap).map(function (key) {
+            return { y: Number(key), items: lineMap[key] };
+          }).sort(function (a, b) {
+            return b.y - a.y;
+          }).map(function (line) {
+            return line.items.sort(function (a, b) { return a.x - b.x; }).map(function (item) { return item.text; }).join(' ');
+          }).join('\n');
+        });
+      });
+    })).then(function (pageTexts) {
+      return pageTexts.join('\n');
+    });
+  }
+
+  function parsePurchaseOrderPdfText(text, fileName) {
+    var raw = String(text || '').replace(/\u00a0/g, ' ');
+    var lines = raw.split(/\n+/).map(function (line) {
+      return line.replace(/[ \t]+/g, ' ').trim();
+    }).filter(Boolean);
+    var compact = lines.join('\n');
+
+    // 只提取订单头部与底部汇总 5 项，不解析明细行的单行金额。
+    var orderNo = firstPdfMatch(compact, [
+      /订单号\s*[:：]\s*([A-Za-z0-9][A-Za-z0-9\-_/]*)/i,
+      /采购订单号\s*[:：]\s*([A-Za-z0-9][A-Za-z0-9\-_/]*)/i
+    ]);
+    var dateText = firstPdfMatch(compact, [
+      /订单日期\s*[:：]\s*(\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2})/,
+      /订货日期\s*[:：]\s*(\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2})/
+    ]);
+    var supplier = detectPdfSupplier(lines, compact);
+    var summary = detectPdfSummaryLine(lines, compact);
+    var parsed = {
+      fileName: fileName,
+      orderNo: orderNo,
+      supplier: supplier,
+      orderDate: parseDateText(dateText),
+      totalQty: summary.qty || '',
+      totalAmount: summary.amount || '',
+      summaryLine: summary.line || '',
+      rawText: raw
+    };
+    parsed.missing = [];
+    if (!parsed.orderNo) parsed.missing.push('订单号');
+    if (!parsed.supplier) parsed.missing.push('供货方（工厂名称）');
+    if (!parsed.orderDate) parsed.missing.push('订单日期');
+    if (!parsed.totalQty) parsed.missing.push('合计数量');
+    if (!parsed.totalAmount) parsed.missing.push('合计总金额');
+    return parsed;
+  }
+
+  function firstPdfMatch(text, patterns) {
+    for (var i = 0; i < patterns.length; i++) {
+      var match = String(text || '').match(patterns[i]);
+      if (match && match[1]) return cleanCell(match[1]).replace(/[，,。;；]+$/, '');
+    }
+    return '';
+  }
+
+  function detectPdfSupplier(lines, compact) {
+    for (var i = 0; i < lines.length && i < 20; i++) {
+      var line = lines[i];
+      if (line.indexOf('供货方') < 0) continue;
+      var value = line.replace(/^.*?供货方\s*[:：]\s*/, '');
+      value = value.replace(/\s*(地址|联系人|电话|邮箱)\s*[:：].*$/, '');
+      value = cleanCell(value);
+      if (value) return value;
+    }
+    var match = String(compact || '').replace(/\n/g, ' ').match(/供货方\s*[:：]\s*(.+?)(?:\s+地址\s*[:：]|\s+联系人\s*[:：]|\s+电话\s*[:：]|\s+邮箱\s*[:：]|$)/);
+    return match ? cleanCell(match[1]) : '';
+  }
+
+  function detectPdfSummaryLine(lines, compact) {
+    var candidates = (lines || []).filter(function (line) {
+      return /(合计|总计|金额合计|价税合计)/.test(line) && /\d/.test(line);
+    });
+    if (!candidates.length) {
+      var flat = String(compact || '').replace(/\n/g, ' ');
+      var flatMatch = flat.match(/(合计|总计|金额合计|价税合计)[^一二三四五六七八九十]{0,80}/);
+      if (flatMatch) candidates.push(flatMatch[0]);
+    }
+    for (var i = candidates.length - 1; i >= 0; i--) {
+      var line = candidates[i];
+      var amountMatch = line.match(/[￥¥]\s*([0-9,，]+(?:\.\d{1,2})?)/);
+      var amount = amountMatch ? parseNumberLike(amountMatch[1]) : 0;
+      var beforeAmount = amountMatch ? line.slice(0, amountMatch.index) : line;
+      var afterLabel = beforeAmount.replace(/^.*?(合计|总计|金额合计|价税合计)\s*/, '');
+      var qtyNums = afterLabel.match(/[0-9][0-9,，]*(?:\.\d+)?/g) || [];
+      var qty = qtyNums.length ? parseNumberLike(qtyNums[qtyNums.length - 1]) : 0;
+      if (!amount) {
+        var nums = line.match(/[0-9][0-9,，]*(?:\.\d+)?/g) || [];
+        if (nums.length >= 2) {
+          qty = parseNumberLike(nums[nums.length - 2]);
+          amount = parseNumberLike(nums[nums.length - 1]);
+        }
+      }
+      if (qty || amount) return { line: line, qty: qty, amount: amount };
+    }
+    return { line: '', qty: 0, amount: 0 };
+  }
+
+  function renderPurchaseOrderPdfPreview(parsed) {
+    var el = $('purchaseOrderUploadPreview');
+    if (!el) return;
+    var missingHtml = parsed.missing.length
+      ? '<div class="feedback-item updated">PDF 识别未完整命中：' + escapeHTML(parsed.missing.join('、')) + '。你可以在下方手动补齐后再确认保存。</div>'
+      : '<div class="feedback-item added">PDF 5 个关键字段已识别，请核对无误后确认保存。</div>';
+    el.innerHTML =
+      '<div class="feedback-section"><strong>PDF 采购订单识别结果：' + escapeHTML(parsed.fileName) + '</strong>' +
+      '<div class="feedback-item updated">本次只保存 5 项汇总字段：订单号、供货方、订单日期、合计数量、合计总金额；PDF 其余内容和明细行单行金额均忽略。</div>' +
+      missingHtml +
+      '<div class="po-pdf-edit-grid">' +
+      '<label>订单号<input id="pdfOrderNoInput" value="' + escapeHTML(parsed.orderNo) + '" required></label>' +
+      '<label>供货方<input id="pdfSupplierInput" value="' + escapeHTML(parsed.supplier) + '" required></label>' +
+      '<label>订单日期<input id="pdfOrderDateInput" type="date" value="' + escapeHTML(parsed.orderDate) + '" required></label>' +
+      '<label>合计数量<input id="pdfTotalQtyInput" value="' + escapeHTML(parsed.totalQty || '') + '" required></label>' +
+      '<label>合计总金额<input id="pdfTotalAmountInput" value="' + escapeHTML(parsed.totalAmount ? formatCurrency(parsed.totalAmount) : '') + '" required></label>' +
+      '</div>' +
+      '<div class="feedback-item updated" style="margin-top:10px;">底部汇总识别行：' + escapeHTML(parsed.summaryLine || '未识别到合计行') + '</div>' +
+      '<div class="record-actions" style="margin-top:12px;">' +
+      '<button class="btn primary" id="confirmPurchaseOrderPdfImportBtn" type="button">确认保存 PDF 订单</button>' +
+      '<button class="btn" id="cancelPurchaseOrderPdfImportBtn" type="button">取消</button>' +
+      '</div></div>';
+    el.style.display = 'block';
+    $('confirmPurchaseOrderPdfImportBtn').addEventListener('click', confirmPurchaseOrderPdfImport);
+    $('cancelPurchaseOrderPdfImportBtn').addEventListener('click', function () {
+      pendingPdfPurchaseOrderImport = null;
+      el.style.display = 'none';
+      el.innerHTML = '';
+    });
+  }
+
+  function confirmPurchaseOrderPdfImport() {
+    if (!pendingPdfPurchaseOrderImport) {
+      toast('没有可保存的 PDF 采购订单');
+      return;
+    }
+    var orderNo = cleanCell($('pdfOrderNoInput').value);
+    var supplier = cleanCell($('pdfSupplierInput').value);
+    var orderDate = cleanCell($('pdfOrderDateInput').value);
+    var totalQty = parseNumberLike($('pdfTotalQtyInput').value);
+    var totalAmount = currencyNumber($('pdfTotalAmountInput').value);
+    var missing = [];
+    if (!orderNo) missing.push('订单号');
+    if (!supplier) missing.push('供货方');
+    if (!orderDate) missing.push('订单日期');
+    if (!totalQty) missing.push('合计数量');
+    if (!totalAmount) missing.push('合计总金额');
+    if (missing.length) {
+      toast('请先补齐：' + missing.join('、'));
+      return;
+    }
+    ensureImportedSupplier(supplier);
+    var amount = formatCurrency(totalAmount);
+    // PDF 订单按“追加”写入采购订单跟进，不覆盖同订单号的历史记录。
+    addRecord({
+      content: supplier + ' 采购订单 ' + orderNo + ' PDF已识别',
+      factory: supplier,
+      product: 'PDF采购订单汇总；合计数量：' + totalQty,
+      module: 'orders',
+      status: '待跟进',
+      dueDate: orderDate,
+      owner: '',
+      orderNo: orderNo,
+      logisticsNo: '',
+      amount: amount,
+      nextStep: 'PDF采购订单已确认入库，后续跟进回签、付款、发票和交付节点',
+      note: 'PDF识别来源：' + pendingPdfPurchaseOrderImport.fileName + '；只提取5项汇总字段；合计行：' + (pendingPdfPurchaseOrderImport.summaryLine || '用户手动补齐'),
+      weeklyCategory: 'auto'
+    }, true);
+    syncEmailOrderFactory(orderNo, supplier);
+    saveState();
+    renderSelects();
+    renderAll();
+    pendingPdfPurchaseOrderImport = null;
+    if ($('purchaseOrderUploadPreview')) $('purchaseOrderUploadPreview').style.display = 'none';
+    toast('PDF 采购订单已追加保存到采购订单跟进列表');
+  }
+
   function readPurchaseOrderFile(file) {
     var name = file.name || '';
     var ext = name.split('.').pop().toLowerCase();
@@ -2464,39 +3200,132 @@
     var headerInfo = findPurchaseOrderHeader(rows);
     var header = headerInfo.header;
     var map = detectPurchaseOrderHeaderMap(header);
-    var topOrderNo = detectLabeledValue(rows, fileName, ['订单编号', '订单号', '采购订单号', '采购单号', 'IBOC号', 'IBOC号码', 'IBOC', 'PO']);
-    var topDate = detectLabeledValue(rows, fileName, ['下单日期', '订单日期', '采购日期', '日期']);
+    var topOrderNo = detectLabeledValue(rows, fileName, ['订单号', '订单编号', '采购订单号', '采购单号', 'IBOC号', 'IBOC号码', 'IBOC', 'PO']);
+    var topDate = detectLabeledValue(rows, fileName, ['订单日期', '订货日期', '下单日期', '采购日期', '日期']);
     var topSupplier = detectPurchaseOrderSupplier(rows, fileName, map, headerInfo.index);
-    var summaryTotal = detectPurchaseOrderSummaryTotal(rows, map, headerInfo.index);
-    var item = detectFirstPurchaseOrderItem(rows, map, headerInfo.index, {
+    var summary = detectPurchaseOrderSummary(rows, map, headerInfo.index);
+    // Excel 上传完整读取整张采购单：顶部订单头、表格中全部产品明细、底部合计汇总。
+    // 注意：底部汇总必须来自表格原有“合计/总计”行，禁止用明细行重新求和代替。
+    var detailItems = detectPurchaseOrderItems(rows, map, headerInfo.index, {
       supplier: topSupplier,
       orderNo: topOrderNo,
       orderDate: parseDateText(topDate)
     });
-    var items = [];
-    var skipped = [];
-    if (item) {
-      item.totalAmount = summaryTotal;
-      items.push(item);
-    } else {
-      skipped.push({ line: headerInfo.index + 2, reason: '未识别到红框里的第一行产品明细' });
-    }
-    var singleOrder = buildSinglePurchaseOrder(items, {
+    var singleOrder = {
       supplier: topSupplier,
       orderNo: topOrderNo,
       orderDate: parseDateText(topDate),
-      summaryTotal: summaryTotal
-    });
+      qty: summary.qty || 0,
+      totalAmount: summary.amount || 0,
+      summaryLine: summary.line || '',
+      items: detailItems,
+      gyModels: detailItems.reduce(function (acc, item) { if (item.gyModel) acc[item.gyModel] = true; return acc; }, {}),
+      productNames: detailItems.reduce(function (acc, item) { if (item.productName) acc[item.productName] = true; return acc; }, {}),
+      orderNos: topOrderNo ? (function () { var o = {}; o[topOrderNo] = true; return o; })() : {},
+      suppliers: topSupplier ? (function () { var o = {}; o[topSupplier] = true; return o; })() : {}
+    };
+    var missing = [];
+    if (!singleOrder.orderNo) missing.push('订单号');
+    if (!singleOrder.supplier) missing.push('供货方（工厂名称）');
+    if (!singleOrder.orderDate) missing.push('订单日期');
+    if (!detailItems.length) missing.push('产品明细行');
+    if (!singleOrder.qty) missing.push('合计数量');
+    if (!singleOrder.totalAmount) missing.push('合计总金额');
     return {
       fileName: fileName,
       header: header,
       map: map,
-      items: items,
+      items: detailItems,
       singleOrder: singleOrder,
-      skipped: skipped,
+      skipped: [],
+      missing: missing,
       supplier: topSupplier,
       headerRow: headerInfo.index + 1
     };
+  }
+
+  function detectPurchaseOrderItems(rows, map, headerIndex, fallback) {
+    // 产品明细只认 GY 号作为型号主键；EP5 等其他编号不会作为库存主键写入。
+    var items = [];
+    var start = Math.max(0, (headerIndex || 0) + 1);
+    for (var i = start; i < (rows || []).length; i++) {
+      var row = rows[i] || [];
+      var cells = row.map(cleanCell);
+      if (!cells.some(Boolean)) continue;
+      var rowText = cells.join(' ');
+      if (/订单具体要求|产品要求|产品图片|包装方式|包装配件|外箱|装箱数|尺寸|请仔细阅读|以下条款|条款|箱唛按照|备注|特殊要求/.test(rowText)) continue;
+      if (/合计|总计/.test(rowText)) continue;
+      var item = parsePurchaseOrderDetailRow(cells, map, fallback, i + 1);
+      if (!item) continue;
+      items.push(item);
+    }
+    return items;
+  }
+
+  function parsePurchaseOrderDetailRow(cells, map, fallback, sourceRow) {
+    var gyModel = cleanGyModel(getMappedCell(cells, map.gyModel));
+    var gyIndex = map.gyModel != null ? map.gyModel : -1;
+    if (!gyModel) {
+      for (var c = 0; c < cells.length; c++) {
+        var candidate = cleanGyModel(cells[c]);
+        if (candidate) {
+          gyModel = candidate;
+          gyIndex = c;
+          break;
+        }
+      }
+    }
+    if (!gyModel) return null;
+
+    var productName = cleanCell(getMappedCell(cells, map.productName));
+    if (!productName) {
+      for (var p = gyIndex + 1; p < cells.length; p++) {
+        if (!cells[p]) continue;
+        if (/^GY[-\s]?\w+/i.test(cells[p])) continue;
+        if (/^[\d,，.￥¥元\s-]+$/.test(cells[p])) continue;
+        productName = cells[p];
+        break;
+      }
+    }
+
+    var qty = parseNumberLike(getMappedCell(cells, map.qty));
+    var unitPrice = parsePurchaseOrderUnitPrice(cells, map.unitPrice);
+    var lineAmount = parseNumberLike(getMappedCell(cells, map.totalAmount));
+    if (!qty || !unitPrice || !lineAmount) {
+      var numbers = collectNumericCellsAfterGy(cells, gyIndex);
+      if (!qty && numbers.length) qty = numbers[0].value;
+      if (!unitPrice && numbers.length >= 2) unitPrice = numbers[1].value;
+      if (!lineAmount && numbers.length >= 3) lineAmount = numbers[numbers.length - 1].value;
+      if (!lineAmount && qty && unitPrice) lineAmount = qty * unitPrice;
+    }
+
+    return {
+      supplier: fallback.supplier || '',
+      orderNo: fallback.orderNo || '',
+      orderDate: fallback.orderDate || '',
+      gyModel: gyModel,
+      productName: productName,
+      qty: qty || 0,
+      unitPrice: unitPrice || 0,
+      lineAmount: lineAmount || 0,
+      sourceRow: sourceRow
+    };
+  }
+
+  function cleanGyModel(value) {
+    var text = cleanCell(value).replace(/\s+/g, '').toUpperCase();
+    var match = text.match(/GY[-]?[A-Z0-9]+/);
+    // GY号必须完整保留横杠，例如 GY-8844 不能被改成 GY8844。
+    return match ? match[0] : '';
+  }
+
+  function collectNumericCellsAfterGy(cells, gyIndex) {
+    var nums = [];
+    for (var i = Math.max(0, gyIndex + 1); i < cells.length; i++) {
+      var n = parseNumberLike(cells[i]);
+      if (n) nums.push({ index: i, value: n });
+    }
+    return nums;
   }
 
   function findPurchaseOrderHeader(rows) {
@@ -2505,21 +3334,25 @@
       var header = (row || []).map(cleanCell);
       var map = detectPurchaseOrderHeaderMap(header);
       var rowText = header.join('');
-      var score = Object.keys(map).filter(function (key) { return map[key] != null; }).length;
-      if (/固特异型号/.test(rowText)) score += 6;
-      if (/品名/.test(rowText)) score += 4;
-      if (/数量/.test(rowText)) score += 3;
-      if (/含税.*单价|单价/.test(rowText)) score += 3;
-      if (/总金额/.test(rowText)) score += 3;
+      var score = 0;
+      if (map.qty != null) score += 5;
+      if (map.totalAmount != null) score += 5;
+      if (map.gyModel != null) score += 6;
+      if (map.productName != null) score += 3;
+      if (map.unitPrice != null) score += 3;
+      if (/GY号|GY型号|固特异型号|品名|产品名称|单价/.test(rowText)) score += 6;
+      if (/合计数量|总数量|总计数量|数量/.test(rowText)) score += 3;
+      if (/合计总金额|总计金额|总金额|合计金额|金额/.test(rowText)) score += 3;
+      if (/合计|总计/.test(rowText)) score += 1;
       if (/订单号|订单日期|供货方|购货方/.test(rowText)) score -= 5;
       if (score > best.score) best = { index: index, score: score, header: header };
     });
     var required = detectPurchaseOrderHeaderMap(best.header);
-    if (required.gyModel == null || required.productName == null || required.qty == null || required.unitPrice == null) {
+    if (required.qty == null || required.totalAmount == null) {
       for (var i = 0; i < (rows || []).length && i < 30; i++) {
         var h = (rows[i] || []).map(cleanCell);
         var text = h.join('');
-        if (/固特异型号/.test(text) && /品名/.test(text) && /数量/.test(text) && (/含税.*单价|单价/.test(text))) {
+        if ((/合计数量|总数量|总计数量|数量/.test(text)) && (/合计总金额|总计金额|总金额|合计金额|金额/.test(text))) {
           return { index: i, score: 999, header: h };
         }
       }
@@ -2529,14 +3362,14 @@
 
   function detectPurchaseOrderHeaderMap(header) {
     var map = {
-      supplier: findHeaderIndex(header, ['供货方', '供应商名称', '供应商', '供方', '卖方', '厂家名称', '工厂名称']),
+      supplier: findHeaderIndex(header, ['供货方', '供应商名称', '供应商', '供方', '卖方', '厂家名称', '工厂名称', '工厂']),
       orderNo: findHeaderIndex(header, ['订单编号', '订单号', '采购订单号', '采购单号', 'PO', '单据编号', '单据号']),
-      orderDate: findHeaderIndex(header, ['下单日期', '订单日期', '采购日期', '日期', '制单日期']),
+      orderDate: findHeaderIndex(header, ['订单日期', '订货日期', '下单日期', '采购日期', '日期', '制单日期']),
       gyModel: findHeaderIndex(header, ['固特异型号', 'GY型号', 'GY号', 'GY', 'GY编码']),
       productName: findHeaderIndex(header, ['品名', '产品名称', '货品名称', '商品名称', '名称']),
-      qty: findHeaderIndex(header, ['数量', '采购数量', '订购数量', '下单数量']),
+      qty: findHeaderIndex(header, ['合计数量', '总数量', '总计数量', '数量', '采购数量', '订购数量', '下单数量']),
       unitPrice: findHeaderIndex(header, ['含税单价', '含税不含运单价', '单价', '采购单价']),
-      totalAmount: findHeaderIndex(header, ['总金额', '金额', '价税合计', '合计金额', '总价', '含税金额'])
+      totalAmount: findHeaderIndex(header, ['合计总金额', '总计金额', '总金额', '金额', '价税合计', '合计金额', '总价', '含税金额'])
     };
     return map;
   }
@@ -2674,6 +3507,10 @@
     return match ? Number(match[0]) : 0;
   }
 
+  function formatPurchaseOrderMoney(value) {
+    return (formatCurrency(value) || '').replace(/^￥/, '¥');
+  }
+
   function detectPurchaseOrderSummaryTotal(rows, map, headerIndex) {
     var totalCol = map && map.totalAmount != null ? map.totalAmount : null;
     var best = 0;
@@ -2698,6 +3535,59 @@
     return best;
   }
 
+  function detectPurchaseOrderSummary(rows, map, headerIndex) {
+    var qtyCol = map && map.qty != null ? map.qty : null;
+    var totalCol = map && map.totalAmount != null ? map.totalAmount : null;
+    var best = { qty: 0, amount: 0, line: '' };
+    (rows || []).forEach(function (row, index) {
+      if (index <= (headerIndex || 0)) return;
+      var cells = (row || []).map(cleanCell);
+      var rowText = cells.join(' ');
+      // 只认底部合计/总计行；遇到订单具体要求和条款区时不再解析后续文字内容。
+      if (/订单具体要求|请仔细阅读|以下条款|条款|箱唛按照/.test(rowText)) return;
+      if (!/合计|总计/.test(rowText)) return;
+      var qty = qtyCol != null ? parseNumberLike(cells[qtyCol]) : 0;
+      var amount = totalCol != null ? parseNumberLike(cells[totalCol]) : 0;
+
+      if (!amount) {
+        for (var i = cells.length - 1; i >= 0; i--) {
+          if (!cells[i]) continue;
+          if (/[￥¥元]|\d/.test(cells[i])) {
+            var amountCandidate = parseNumberLike(cells[i]);
+            if (amountCandidate) {
+              amount = amountCandidate;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!qty) {
+        var beforeAmountCells = amount && amount.toString ? cells.slice(0) : cells;
+        if (amount) {
+          var amountIndex = -1;
+          for (var a = cells.length - 1; a >= 0; a--) {
+            if (parseNumberLike(cells[a]) === amount) {
+              amountIndex = a;
+              break;
+            }
+          }
+          beforeAmountCells = amountIndex >= 0 ? cells.slice(0, amountIndex) : cells;
+        }
+        for (var q = beforeAmountCells.length - 1; q >= 0; q--) {
+          var qtyCandidate = parseNumberLike(beforeAmountCells[q]);
+          if (qtyCandidate && qtyCandidate !== amount) {
+            qty = qtyCandidate;
+            break;
+          }
+        }
+      }
+
+      if (qty || amount) best = { qty: qty, amount: amount, line: rowText };
+    });
+    return best;
+  }
+
   function parseDateText(value) {
     if (value instanceof Date) return toYMD(value);
     var text = cleanCell(value);
@@ -2713,6 +3603,12 @@
     return '';
   }
 
+  function cleanLabeledValue(value) {
+    return cleanCell(value)
+      .replace(/\s+(订单号|订单编号|采购订单号|采购单号|订单日期|订货日期|下单日期|采购日期|购货方|供货方|供应商|工厂|地址|联系人|电话|邮箱|交货日期|交货地点|付款方式)[:：].*$/, '')
+      .replace(/[，,。;；]+$/, '');
+  }
+
   function detectLabeledValue(rows, fileName, labels) {
     for (var r = 0; r < (rows || []).length && r < 24; r++) {
       var row = rows[r] || [];
@@ -2724,13 +3620,19 @@
           var labelRe = new RegExp('^' + label + '\\s*[:：]?\\s*(.*)$');
           var exact = cell.match(labelRe);
           if (!exact) continue;
-          if (cleanCell(exact[1])) return cleanCell(exact[1]).replace(/[，,。;；]+$/, '');
+          if (cleanCell(exact[1])) return cleanLabeledValue(exact[1]);
           for (var next = c + 1; next < row.length; next++) {
             var v = cleanCell(row[next]);
             if (!v) continue;
             if (/^(订单号|订单日期|购货方|供货方|地址|联系人|电话|邮箱|交货日期|交货地点|付款方式)[:：]?$/.test(v)) break;
-            return v.replace(/[，,。;；]+$/, '');
+            return cleanLabeledValue(v);
           }
+        }
+        for (var embedded = 0; embedded < labels.length; embedded++) {
+          var embeddedLabel = labels[embedded];
+          var embeddedRe = new RegExp(embeddedLabel + '\\s*[:：]\\s*([^\\s]+(?:\\s*[^\\s:：]+){0,8})');
+          var embeddedMatch = cell.match(embeddedRe);
+          if (embeddedMatch && cleanCell(embeddedMatch[1])) return cleanLabeledValue(embeddedMatch[1]);
         }
       }
     }
@@ -2738,12 +3640,15 @@
     for (var i = 0; i < labels.length; i++) {
       var re = new RegExp(labels[i] + '[:：\\s]*([^\\s]+(?:\\s*[^\\s:：]+){0,8})');
       var match = text.match(re);
-      if (match) return cleanCell(match[1]).replace(/[，,。;；]+$/, '');
+      if (match) return cleanLabeledValue(match[1]);
     }
     return '';
   }
 
   function detectPurchaseOrderSupplier(rows, fileName, map, headerIndex) {
+    var topText = (rows || []).slice(0, 20).map(function (row) { return (row || []).map(cleanCell).join(' '); }).join('\n');
+    var topMatch = topText.match(/供货方\s*[:：]\s*(.+?)(?:\s+地址\s*[:：]|\s+联系人\s*[:：]|\s+电话\s*[:：]|\s+邮箱\s*[:：]|\n|$)/);
+    if (topMatch && cleanCell(topMatch[1])) return cleanLabeledValue(topMatch[1]);
     var dataRows = (rows || []).slice((headerIndex || 0) + 1, (headerIndex || 0) + 8);
     if (map.supplier != null) {
       for (var i = 0; i < dataRows.length; i++) {
@@ -2812,41 +3717,60 @@
     var el = $('purchaseOrderUploadPreview');
     if (!el) return;
     var single = parsed.singleOrder || buildSinglePurchaseOrder(parsed.items, {});
-    var rows = parsed.items.slice(0, 80).map(function (r) {
-      return '<tr>' +
-        '<td>' + escapeHTML(r.supplier || '未识别') + '</td>' +
-        '<td><span class="mono">' + escapeHTML(r.orderNo) + '</span></td>' +
-        '<td>' + escapeHTML(r.orderDate || '') + '</td>' +
-        '<td>' + escapeHTML(r.gyModel || '') + '</td>' +
-        '<td>' + escapeHTML(r.productName || '') + '</td>' +
-        '<td>' + escapeHTML(r.qty || '') + '</td>' +
-        '<td>' + escapeHTML(r.unitPrice ? formatCurrency(r.unitPrice) : '') + '</td>' +
-        '<td>' + escapeHTML(r.totalAmount ? formatCurrency(r.totalAmount) : '') + '</td>' +
-        '</tr>';
-    }).join('');
-    var orderNoCount = Object.keys(single.orderNos || {}).length;
-    var supplierCount = Object.keys(single.suppliers || {}).length;
-    var warning = '';
-    if (orderNoCount > 1) warning += '<div class="feedback-item updated">提醒：明细中出现 ' + orderNoCount + ' 个订单编号，系统仍按同一张已完成采购单流转，请核对订单编号是否正确。</div>';
-    if (supplierCount > 1) warning += '<div class="feedback-item updated">提醒：明细中出现 ' + supplierCount + ' 个供应商名称，系统仍按同一张已完成采购单流转，请核对供应商是否正确。</div>';
+    var missing = parsed.missing || [];
+    var warning = missing.length
+      ? '<div class="feedback-item updated">以下关键字段未识别完整：' + escapeHTML(missing.join('、')) + '。请检查表格顶部订单信息和底部合计行。</div>'
+      : '';
     var summary = '<div class="feedback-item added">已识别采购单，待进入流转：' + escapeHTML(single.supplier || '未识别供应商') +
       ' · ' + escapeHTML(single.orderNo || '未识别订单编号') +
-      ' · 明细 ' + single.items.length + ' 行 · 合计数量 ' + escapeHTML(single.qty || '') +
-      ' · 总金额（合计行） ' + escapeHTML(single.totalAmount ? formatCurrency(single.totalAmount) : '未识别') + '</div>' + warning;
-    var skipped = parsed.skipped.length ? '<div class="feedback-section"><strong>未导入提示</strong>' +
-      parsed.skipped.map(function (s) { return '<div class="feedback-item updated">第 ' + s.line + ' 行：' + escapeHTML(s.reason) + '</div>'; }).join('') +
-      '</div>' : '';
+      ' · ' + escapeHTML(single.orderDate || '未识别订单日期') +
+      ' · 合计数量 ' + escapeHTML(single.qty || '未识别') +
+      ' · 合计总金额 ' + escapeHTML(single.totalAmount ? formatPurchaseOrderMoney(single.totalAmount) : '未识别') + '</div>' + warning;
+    var headerCards = [
+      { label: '订单号', field: 'orderNo', value: single.orderNo || '' },
+      { label: '订单日期', field: 'orderDate', value: single.orderDate || '' },
+      { label: '供货方', field: 'supplier', value: single.supplier || '' }
+    ].map(function (item) {
+      return '<div class="po-summary-card"><span>' + escapeHTML(item.label) + '</span>' +
+        (item.field === 'orderDate'
+          ? purchasePreviewDateInput('data-po-field="' + escapeHTML(item.field) + '"', item.value, item.label)
+          : purchasePreviewInput('data-po-field="' + escapeHTML(item.field) + '"', item.value, item.label)) +
+        '</div>';
+    }).join('');
+    var detailRows = (single.items || []).map(function (item, index) {
+      return '<tr>' +
+        '<td>' + purchasePreviewInput('data-po-detail-index="' + index + '" data-po-detail-field="gyModel"', item.gyModel || '', 'GY号') + '</td>' +
+        '<td>' + escapeHTML(item.productName || '') + '</td>' +
+        '<td>' + purchasePreviewInput('data-po-detail-index="' + index + '" data-po-detail-field="qty"', item.qty || '', '数量') + '</td>' +
+        '<td>' + purchasePreviewInput('data-po-detail-index="' + index + '" data-po-detail-field="unitPrice"', item.unitPrice || '', '含税单价') + '</td>' +
+        '<td>' + purchasePreviewInput('data-po-detail-index="' + index + '" data-po-detail-field="lineAmount"', item.lineAmount || '', '总金额') + '</td>' +
+        '</tr>';
+    }).join('');
+    var detailTable = detailRows
+      ? '<div class="table-wrap" style="margin-top:10px;"><table><thead><tr><th>GY号</th><th>品名</th><th>数量</th><th>含税单价</th><th>总金额</th></tr></thead><tbody>' + detailRows + '</tbody></table></div>'
+      : '<div class="empty">未识别到产品明细行。请确认表格内包含 GY号、品名、数量、含税单价、总金额。</div>';
+    var footerCards = [
+      { label: '合计数量', field: 'qty', value: single.qty || '' },
+      { label: '合计总金额', field: 'totalAmount', value: single.totalAmount || '' }
+    ].map(function (item) {
+      return '<div class="po-summary-card"><span>' + escapeHTML(item.label) + '</span>' +
+        purchasePreviewInput('data-po-field="' + escapeHTML(item.field) + '"', item.value, item.label) +
+        '</div>';
+    }).join('');
     el.innerHTML =
       '<div class="feedback-section"><strong>采购订单识别结果：' + escapeHTML(parsed.fileName) + '</strong>' +
-      '<div class="feedback-item updated">只识别红框里的第一行产品明细；订单具体要求后面的内容不识别。总金额从底部合计行提取。请核对后确认上传。</div>' +
+      '<div class="feedback-item updated">完整读取整张采购单全部产品明细，以GY号作为库存型号，底部读取合计行；核对全部信息后再确认上传。</div>' +
       summary +
-      '<div class="po-preview-table"><table><thead><tr><th>供货方</th><th>订单号</th><th>订货日期</th><th>固特异型号</th><th>品名</th><th>数量</th><th>单价</th><th>总金额</th></tr></thead><tbody>' +
-      (rows || '<tr><td colspan="8" class="muted">没有识别到可导入明细</td></tr>') +
-      '</tbody></table></div>' +
+      '<h4 style="margin:12px 0 8px;">订单头信息</h4>' +
+      '<div class="po-summary-grid">' + headerCards + '</div>' +
+      '<h4 style="margin:12px 0 8px;">全部产品明细</h4>' +
+      detailTable +
+      '<h4 style="margin:12px 0 8px;">底部汇总</h4>' +
+      '<div class="po-summary-grid">' + footerCards + '</div>' +
       '<div class="record-actions" style="margin-top:12px;">' +
       '<button class="btn primary" id="confirmPurchaseOrderImportBtn" type="button">确认识别并进入流转</button>' +
       '<button class="btn" id="cancelPurchaseOrderImportBtn" type="button">取消</button>' +
-      '</div></div>' + skipped;
+      '</div></div>';
     el.style.display = 'block';
     $('confirmPurchaseOrderImportBtn').addEventListener('click', confirmPurchaseOrderImport);
     $('cancelPurchaseOrderImportBtn').addEventListener('click', function () {
@@ -2854,6 +3778,73 @@
       el.style.display = 'none';
       el.innerHTML = '';
     });
+  }
+
+  function purchasePreviewInput(attrs, value, label) {
+    return '<input ' + attrs + ' value="' + escapeHTML(value == null ? '' : value) + '" aria-label="' + escapeHTML(label || '') + '" ' +
+      'style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;color:var(--text);background:#fff;">';
+  }
+
+  function purchasePreviewDateInput(attrs, value, label) {
+    return '<input type="date" ' + attrs + ' value="' + escapeHTML(value == null ? '' : value) + '" aria-label="' + escapeHTML(label || '') + '" ' +
+      'onclick="if(this.showPicker){this.showPicker();}" onfocus="if(this.showPicker){this.showPicker();}" ' +
+      'style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font:inherit;color:var(--text);background:#fff;">';
+  }
+
+  function applyPurchaseOrderPreviewEdits(parsed) {
+    var el = $('purchaseOrderUploadPreview');
+    if (!el || !parsed || !parsed.singleOrder) return;
+    var group = parsed.singleOrder;
+    var fieldInput = function (field) {
+      var input = el.querySelector('[data-po-field="' + field + '"]');
+      return input ? cleanCell(input.value) : '';
+    };
+    group.orderNo = fieldInput('orderNo') || group.orderNo || '';
+    group.orderDate = fieldInput('orderDate') || group.orderDate || '';
+    group.supplier = fieldInput('supplier') || group.supplier || '';
+    group.qty = parseNumberLike(fieldInput('qty')) || 0;
+    group.totalAmount = parseNumberLike(fieldInput('totalAmount')) || 0;
+
+    (group.items || []).forEach(function (item, index) {
+      var readDetail = function (field) {
+        var input = el.querySelector('[data-po-detail-index="' + index + '"][data-po-detail-field="' + field + '"]');
+        return input ? cleanCell(input.value) : '';
+      };
+      item.gyModel = cleanGyModel(readDetail('gyModel')) || readDetail('gyModel') || item.gyModel || '';
+      item.qty = parseNumberLike(readDetail('qty')) || 0;
+      item.unitPrice = parseNumberLike(readDetail('unitPrice')) || 0;
+      item.lineAmount = parseNumberLike(readDetail('lineAmount')) || 0;
+      item.supplier = group.supplier;
+      item.orderNo = group.orderNo;
+      item.orderDate = group.orderDate;
+    });
+
+    group.gyModels = {};
+    group.productNames = {};
+    group.orderNos = group.orderNo ? (function () { var o = {}; o[group.orderNo] = true; return o; })() : {};
+    group.suppliers = group.supplier ? (function () { var o = {}; o[group.supplier] = true; return o; })() : {};
+    (group.items || []).forEach(function (item) {
+      if (item.gyModel) group.gyModels[item.gyModel] = true;
+      if (item.productName) group.productNames[item.productName] = true;
+    });
+    parsed.items = group.items || [];
+  }
+
+  function purchaseOrderMissingFields(group) {
+    var missing = [];
+    if (!group.orderNo) missing.push('订单号');
+    if (!group.supplier) missing.push('供货方（工厂名称）');
+    if (!group.orderDate) missing.push('订单日期');
+    if (!(group.items || []).length) missing.push('产品明细行');
+    if (!group.qty) missing.push('合计数量');
+    if (!group.totalAmount) missing.push('合计总金额');
+    (group.items || []).forEach(function (item, index) {
+      if (!item.gyModel) missing.push('第' + (index + 1) + '行GY号');
+      if (!item.qty) missing.push('第' + (index + 1) + '行数量');
+      if (!item.unitPrice) missing.push('第' + (index + 1) + '行含税单价');
+      if (!item.lineAmount) missing.push('第' + (index + 1) + '行总金额');
+    });
+    return missing;
   }
 
   function renderPurchaseOrderUploadMessage(message, cls) {
@@ -2865,28 +3856,33 @@
 
   function confirmPurchaseOrderImport() {
     var parsed = pendingPurchaseOrderImport;
-    if (!parsed || !parsed.singleOrder || !parsed.singleOrder.orderNo) {
+    if (!parsed || !parsed.singleOrder) {
       toast('没有可确认上传的采购订单');
+      return;
+    }
+    applyPurchaseOrderPreviewEdits(parsed);
+    parsed.missing = purchaseOrderMissingFields(parsed.singleOrder);
+    if (parsed.missing && parsed.missing.length) {
+      toast('关键字段未识别完整：' + parsed.missing.join('、'));
       return;
     }
     var addedOrders = 0;
     var updatedPayments = 0;
     var group = parsed.singleOrder;
     if (group.supplier) ensureImportedSupplier(group.supplier);
-    var gyList = Object.keys(group.gyModels || {});
-    var productNameList = Object.keys(group.productNames || {});
-    var productParts = [];
-    if (gyList.length) productParts.push('固特异型号：' + gyList.slice(0, 5).join('、') + (gyList.length > 5 ? '等' + gyList.length + '项' : ''));
-    if (productNameList.length) productParts.push('品名：' + productNameList.slice(0, 5).join('、') + (productNameList.length > 5 ? '等' + productNameList.length + '项' : ''));
-    var product = productParts.join('；') || '采购订单';
-    var amount = group.totalAmount ? formatCurrency(group.totalAmount) : '';
+    var product = '采购订单汇总；合计数量：' + (group.qty || 0) + '；明细行数：' + ((group.items || []).length);
+    var amount = group.totalAmount ? formatPurchaseOrderMoney(group.totalAmount) : '';
     var existingOrder = findOrderByNo(group.supplier, group.orderNo);
     var record;
     if (existingOrder) {
       existingOrder.product = product || existingOrder.product;
       existingOrder.amount = amount || existingOrder.amount;
       existingOrder.dueDate = group.orderDate || existingOrder.dueDate;
-      existingOrder.note = (existingOrder.note || '') + ' | 已完成采购单识别更新：' + parsed.fileName;
+      existingOrder.purchaseOrderHeader = { orderNo: group.orderNo, orderDate: group.orderDate, supplier: group.supplier };
+      existingOrder.purchaseOrderItems = group.items || [];
+      existingOrder.purchaseOrderSummary = { qty: group.qty || 0, totalAmount: group.totalAmount || 0, summaryLine: group.summaryLine || '' };
+      existingOrder.importSourceType = 'Excel完整采购单';
+      existingOrder.note = (existingOrder.note || '') + ' | Excel完整采购单识别更新：' + parsed.fileName + '；合计数量：' + group.qty + '；合计总金额：' + amount + '；明细行数：' + ((group.items || []).length);
       existingOrder.updatedAt = nowISO();
       record = existingOrder;
     } else {
@@ -2902,11 +3898,16 @@
         logisticsNo: '',
         amount: amount,
         nextStep: '已完成采购单识别入库，流转到财务待付款跟进付款与开票',
-        note: '已完成采购单识别：' + parsed.fileName + '；明细行数：' + group.items.length + '；合计数量：' + group.qty,
+        note: 'Excel完整采购单识别：' + parsed.fileName + '；合计数量：' + group.qty + '；合计总金额：' + amount + '；明细行数：' + ((group.items || []).length) + '；付款开票仅使用整单汇总字段',
+        purchaseOrderHeader: { orderNo: group.orderNo, orderDate: group.orderDate, supplier: group.supplier },
+        purchaseOrderItems: group.items || [],
+        purchaseOrderSummary: { qty: group.qty || 0, totalAmount: group.totalAmount || 0, summaryLine: group.summaryLine || '' },
+        importSourceType: 'Excel完整采购单',
         weeklyCategory: 'auto'
       }, true);
       addedOrders++;
     }
+    var updatedInventory = applyPurchaseOrderInventoryReceipt(group, record, parsed.fileName);
     if (upsertPurchaseOrderPayment(group, record, amount, parsed.fileName)) updatedPayments++;
     syncEmailOrderFactory(group.orderNo, group.supplier);
     saveState();
@@ -2917,7 +3918,158 @@
     switchSection('finance');
     var panel = $('financePaymentPanel');
     if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    toast('已完成采购单识别并进入流转：跟进记录已更新，财务待付款 ' + updatedPayments + ' 笔');
+    toast('已完成采购单识别并进入流转：库存入库 ' + updatedInventory + ' 行，财务待付款 ' + updatedPayments + ' 笔');
+  }
+
+  function applyPurchaseOrderInventoryReceipt(group, record, fileName) {
+    // Excel确认后才自动入库；PDF导入不会调用此函数。
+    var factory = group.supplier || '';
+    if (!factory) return 0;
+    state.factoryInventory = state.factoryInventory && typeof state.factoryInventory === 'object' ? state.factoryInventory : {};
+    state.factoryInventoryMovements = Array.isArray(state.factoryInventoryMovements) ? state.factoryInventoryMovements : [];
+    if (!state.factoryInventory[factory]) state.factoryInventory[factory] = {};
+    var count = 0;
+    (group.items || []).forEach(function (item) {
+      var gy = cleanGyModel(item.gyModel);
+      var qty = Number(item.qty || 0);
+      if (!gy || !qty) return;
+      var stock = state.factoryInventory[factory][gy] || {
+        factory: factory,
+        gyModel: gy,
+        productName: item.productName || '',
+        qty: 0,
+        createdAt: nowISO(),
+        updatedAt: nowISO()
+      };
+      stock.productName = item.productName || stock.productName || '';
+      stock.orderNo = group.orderNo || stock.orderNo || '';
+      stock.qty = Number(stock.qty || 0) + qty;
+      stock.updatedAt = nowISO();
+      state.factoryInventory[factory][gy] = stock;
+      state.factoryInventoryMovements.unshift({
+        id: makeId(),
+        type: '采购入库',
+        factory: factory,
+        gyModel: gy,
+        productName: item.productName || '',
+        qty: qty,
+        unitPrice: item.unitPrice || 0,
+        lineAmount: item.lineAmount || 0,
+        orderNo: group.orderNo || '',
+        orderDate: group.orderDate || '',
+        recordId: record.id || '',
+        sourceFile: fileName || '',
+        sourceRow: item.sourceRow || '',
+        createdAt: nowISO(),
+        note: 'Excel采购单确认流转自动入库，库存型号主键为GY号。'
+      });
+      count++;
+    });
+    if (count) {
+      state.operationLogs = state.operationLogs || [];
+      state.operationLogs.unshift({
+        time: nowISO(),
+        action: 'Excel采购单自动入库',
+        detail: factory + ' / 订单 ' + (group.orderNo || '') + ' / 明细 ' + count + ' 行',
+        factory: factory
+      });
+    }
+    return count;
+  }
+
+  function factoryLatestInventoryMovement(factory, gyModel) {
+    return (state.factoryInventoryMovements || []).filter(function (m) {
+      if (m.factory !== factory) return false;
+      if (gyModel && m.gyModel !== gyModel) return false;
+      return true;
+    }).sort(function (a, b) {
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    })[0] || null;
+  }
+
+  function factoryLatestPurchaseOrderNo(factory) {
+    var latest = (state.factoryInventoryMovements || []).filter(function (m) {
+      return m.factory === factory && m.type === '采购入库' && m.orderNo;
+    }).sort(function (a, b) {
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    })[0];
+    return latest ? latest.orderNo : '';
+  }
+
+  function deductCurrentOrderInventory() {
+    var factory = selectedFactory || '';
+    var orderNo = factoryLatestPurchaseOrderNo(factory);
+    if (!factory || !orderNo) {
+      toast('当前工厂暂无可扣减的订单库存');
+      return;
+    }
+    var byGy = {};
+    (state.factoryInventoryMovements || []).forEach(function (m) {
+      if (m.factory !== factory || m.orderNo !== orderNo || m.type !== '采购入库') return;
+      if (!m.gyModel) return;
+      if (!byGy[m.gyModel]) byGy[m.gyModel] = { qty: 0, productName: m.productName || '' };
+      byGy[m.gyModel].qty += Number(m.qty || 0);
+      if (m.productName) byGy[m.gyModel].productName = m.productName;
+    });
+    var deducted = 0;
+    Object.keys(byGy).forEach(function (gy) {
+      if (deductFactoryInventoryItem(factory, gy, byGy[gy].qty, '按当前订单一键扣减库存', orderNo, true)) deducted++;
+    });
+    if (!deducted) {
+      toast('当前订单没有可扣减的库存明细');
+      return;
+    }
+    saveState();
+    renderFactoryInventoryPanel();
+    toast('已按当前订单 ' + orderNo + ' 扣减库存 ' + deducted + ' 个型号');
+  }
+
+  function deductFactoryInventoryItem(factory, gyModel, qty, reason, orderNo, silent) {
+    qty = Number(qty || 0);
+    if (!factory || !gyModel || !qty || qty <= 0) {
+      if (!silent) toast('请输入有效扣减数量');
+      return false;
+    }
+    state.factoryInventory = state.factoryInventory && typeof state.factoryInventory === 'object' ? state.factoryInventory : {};
+    state.factoryInventoryMovements = Array.isArray(state.factoryInventoryMovements) ? state.factoryInventoryMovements : [];
+    if (!state.factoryInventory[factory]) state.factoryInventory[factory] = {};
+    var stock = state.factoryInventory[factory][gyModel];
+    if (!stock) {
+      if (!silent) toast('未找到该GY号库存');
+      return false;
+    }
+    var before = Number(stock.qty || 0);
+    var actual = Math.min(before, qty);
+    if (!actual) {
+      if (!silent) toast('该GY号当前库存为0，无法扣减');
+      return false;
+    }
+    stock.qty = before - actual;
+    stock.updatedAt = nowISO();
+    state.factoryInventory[factory][gyModel] = stock;
+    state.factoryInventoryMovements.unshift({
+      id: makeId(),
+      type: reason || '库存扣减',
+      factory: factory,
+      gyModel: gyModel,
+      productName: stock.productName || '',
+      qty: -actual,
+      unitPrice: 0,
+      lineAmount: 0,
+      orderNo: orderNo || stock.orderNo || '',
+      orderDate: '',
+      recordId: '',
+      sourceFile: '',
+      sourceRow: '',
+      createdAt: nowISO(),
+      note: (reason || '库存扣减') + '，扣减前库存：' + before + '，本次扣减：' + actual + '，扣减后库存：' + stock.qty
+    });
+    if (!silent) {
+      saveState();
+      renderFactoryInventoryPanel();
+      toast('已扣减 ' + gyModel + ' 库存 ' + actual);
+    }
+    return true;
   }
 
   function upsertPurchaseOrderPayment(group, record, amount, fileName) {
@@ -2935,7 +4087,7 @@
         dueDate: group.orderDate || toYMD(today()),
         paymentStatus: '待付款',
         invoiceStatus: '待开票',
-        note: '已完成采购单识别流转；来源文件：' + fileName + '；明细行数：' + group.items.length,
+        note: 'Excel完整采购单汇总字段流转；来源文件：' + fileName + '；合计数量：' + (group.qty || 0) + '；付款开票只使用整单汇总，产品明细不参与付款金额计算',
         recordId: record.id,
         createdAt: nowISO(),
         updatedAt: nowISO(),
@@ -2947,7 +4099,7 @@
     payment.amount = amount || payment.amount;
     payment.dueDate = group.orderDate || payment.dueDate;
     payment.recordId = record.id || payment.recordId;
-    payment.note = '已完成采购单识别更新；来源文件：' + fileName + '；明细行数：' + group.items.length;
+    payment.note = 'Excel完整采购单汇总字段更新；来源文件：' + fileName + '；合计数量：' + (group.qty || 0) + '；付款开票只使用整单汇总，产品明细不参与付款金额计算';
     payment.updatedAt = nowISO();
     payment.history = payment.history || [];
     payment.history.push({ time: payment.updatedAt, action: '已完成采购单更新待付款' });
@@ -3831,6 +4983,162 @@
     a.download = '采购周报-' + toYMD(today()) + '.txt';
     a.click();
     URL.revokeObjectURL(a.href);
+  }
+
+  function exportAllPurchaseOrdersExcel() {
+    var orders = filterByModule('orders');
+    if (!orders.length) {
+      toast('暂无采购订单可导出');
+      return;
+    }
+    var headerRows = orders.map(function (r) {
+      var summary = r.purchaseOrderSummary || {};
+      var header = r.purchaseOrderHeader || {};
+      return {
+        状态: getDisplayStatus(r),
+        工作内容: r.content || '',
+        下一步: r.nextStep || '',
+        供货方: header.supplier || r.factory || '',
+        订单号: header.orderNo || r.orderNo || '',
+        订单日期: header.orderDate || formatDate(r.dueDate) || '',
+        产品或事项: r.product || '',
+        时间节点: formatDate(r.dueDate) || '',
+        物流单号: r.logisticsNo || '',
+        合计数量: summary.qty || '',
+        合计总金额: summary.totalAmount ? formatPurchaseOrderMoney(summary.totalAmount) : (displayAmount(r) || ''),
+        明细行数: Array.isArray(r.purchaseOrderItems) ? r.purchaseOrderItems.length : 0,
+        导入类型: r.importSourceType || '',
+        备注: r.note || '',
+        创建时间: shortTime(r.createdAt),
+        更新时间: shortTime(r.updatedAt)
+      };
+    });
+    var detailRows = [];
+    var summaryRows = [];
+    orders.forEach(function (r) {
+      var header = r.purchaseOrderHeader || {};
+      var summary = r.purchaseOrderSummary || {};
+      summaryRows.push({
+        供货方: header.supplier || r.factory || '',
+        订单号: header.orderNo || r.orderNo || '',
+        订单日期: header.orderDate || formatDate(r.dueDate) || '',
+        合计数量: summary.qty || '',
+        合计总金额: summary.totalAmount ? formatPurchaseOrderMoney(summary.totalAmount) : (displayAmount(r) || ''),
+        底部合计原文: summary.summaryLine || ''
+      });
+      (r.purchaseOrderItems || []).forEach(function (item, index) {
+        detailRows.push({
+          供货方: header.supplier || r.factory || '',
+          订单号: header.orderNo || r.orderNo || '',
+          订单日期: header.orderDate || formatDate(r.dueDate) || '',
+          序号: index + 1,
+          GY号: item.gyModel || '',
+          品名: item.productName || '',
+          数量: item.qty || '',
+          单价: item.unitPrice ? formatPurchaseOrderMoney(item.unitPrice) : '',
+          单行总金额: item.lineAmount ? formatPurchaseOrderMoney(item.lineAmount) : '',
+          来源行号: item.sourceRow || ''
+        });
+      });
+    });
+    var fileName = '采购订单全套备份-' + toYMD(today()) + '.xlsx';
+    if (window.XLSX) {
+      var book = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(headerRows), '订单头');
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(detailRows.length ? detailRows : [{ 提示: '暂无Excel采购单产品明细' }]), '产品明细');
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(summaryRows), '底部汇总');
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(factoryInventoryMovementRows()), '库存入库流水');
+      XLSX.writeFile(book, fileName);
+      toast('已导出采购订单全套 Excel 备份');
+      return;
+    }
+    var csvRows = detailRows.length ? detailRows : headerRows;
+    var csv = '\ufeff' + objectRowsToCsv(csvRows);
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName.replace(/\.xlsx$/, '.csv');
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Excel 库未加载，已导出 CSV 备份');
+  }
+
+  function factoryInventoryMovementRows(factory) {
+    return (state.factoryInventoryMovements || [])
+      .filter(function (m) { return !factory || m.factory === factory; })
+      .map(function (m) {
+        return {
+          时间: shortTime(m.createdAt),
+          类型: m.type || '采购入库',
+          工厂: m.factory || '',
+          来源订单号: m.orderNo || '',
+          订单日期: m.orderDate || '',
+          GY号: m.gyModel || '',
+          品名: m.productName || '',
+          入库数量: m.qty || '',
+          单价: m.unitPrice ? formatPurchaseOrderMoney(m.unitPrice) : '',
+          单行总金额: m.lineAmount ? formatPurchaseOrderMoney(m.lineAmount) : '',
+          来源文件: m.sourceFile || '',
+          来源行号: m.sourceRow || ''
+        };
+      });
+  }
+
+  function factoryInventoryStockRows(factory) {
+    var rows = [];
+    var inventory = state.factoryInventory || {};
+    Object.keys(inventory).forEach(function (factoryName) {
+      if (factory && factoryName !== factory) return;
+      Object.keys(inventory[factoryName] || {}).forEach(function (gy) {
+        var item = inventory[factoryName][gy] || {};
+        rows.push({
+          工厂: factoryName,
+          GY号: item.gyModel || gy,
+          品名: item.productName || '',
+          库存数量: item.qty || 0,
+          创建时间: shortTime(item.createdAt),
+          最后更新: shortTime(item.updatedAt)
+        });
+      });
+    });
+    return rows;
+  }
+
+  function exportFactoryInventoryBackup() {
+    var factory = selectedFactory || '';
+    var stocks = factoryInventoryStockRows(factory);
+    var movements = factoryInventoryMovementRows(factory);
+    if (!stocks.length && !movements.length) {
+      toast('当前工厂暂无库存可导出');
+      return;
+    }
+    var fileName = (factory || '全部工厂') + '-代管库存备份-' + toYMD(today()) + '.xlsx';
+    if (window.XLSX) {
+      var book = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(stocks.length ? stocks : [{ 提示: '暂无库存总账' }]), '库存总账');
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(movements.length ? movements : [{ 提示: '暂无入库流水' }]), '入库流水');
+      XLSX.writeFile(book, fileName);
+      toast('已导出库存 Excel 备份');
+      return;
+    }
+    var blob = new Blob(['\ufeff' + objectRowsToCsv(stocks.length ? stocks : movements)], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName.replace(/\.xlsx$/, '.csv');
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Excel 库未加载，已导出库存 CSV 备份');
+  }
+
+  function objectRowsToCsv(rows) {
+    if (!rows.length) return '';
+    var headers = Object.keys(rows[0]);
+    var escapeCsv = function (value) {
+      return '"' + String(value == null ? '' : value).replace(/"/g, '""') + '"';
+    };
+    return [headers.map(escapeCsv).join(',')].concat(rows.map(function (row) {
+      return headers.map(function (h) { return escapeCsv(row[h]); }).join(',');
+    })).join('\n');
   }
 
   function exportData() {

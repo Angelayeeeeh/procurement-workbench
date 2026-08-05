@@ -76,9 +76,9 @@
 
   function detectShipCols(headers) {
     var cols = {};
-    cols.orderNo = findCol(headers, ['预订单IBOC号码', 'IBOC', '预订单']);
-    cols.sku = findCol(headers, ['匹配型号', '型号', 'GY']);
-    cols.shipQty = findCol(headers, ['发货数量', '发货']);
+    cols.orderNo = findCol(headers, ['订单号', '预订单IBOC号码', 'IBOC', '预订单', '销售订单号']);
+    cols.sku = findCol(headers, ['SKU', 'SKU编码', 'GY号', '匹配型号', '型号', 'GY']);
+    cols.shipQty = findCol(headers, ['已发货数量', '发货数量', '出货数量', '发货']);
     if (cols.shipQty === -1) cols.shipQty = findCol(headers, ['数量']);
     cols.date = findCol(headers, ['日期']);
     cols.dest = findCol(headers, ['地名', '去向', '目的地']);
@@ -102,6 +102,7 @@
   }
 
   function handleShipFile(file) {
+    state.pendingType = 'shipment';
     parseExcel(file, function(err, rows) {
       if (err) { showPreview('error', '出货表解析失败：' + err.message); return; }
       if (rows.length < 2) { showPreview('error', '出货表没有数据行'); return; }
@@ -134,7 +135,6 @@
         });
       }
       state.shipParsed = parsed;
-      state.pendingType = 'shipment';
       matchAndPreviewShipments(parsed, file.name);
     });
   }
@@ -281,14 +281,16 @@
     data.meta.shipRows = Number(data.meta.shipRows || 0) + parsed.length;
     data.meta.generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
     rebuildSummaries(data);
-    var saved = window.LAIKE_STORAGE && window.LAIKE_STORAGE.save && window.LAIKE_STORAGE.save();
+    var saved = window.LAIKE_STORAGE && window.LAIKE_STORAGE.save && window.LAIKE_STORAGE.save(false);
     window.LAIKE_APP.refresh();
     clearPreview();
-    showPreview('success', '<div class="preview-header"><h3>扣减并保存完成</h3><p>已将本次出货追加到现有已发货数量，并扣减对应库存。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '最新数据已保存，下次打开会自动读取。' : '注意：本地保存失败，请不要关闭页面，先联系处理。') + '</p></div>');
+    showPreview('success', '<div class="preview-header"><h3>扣减完成，待一键保存</h3><p>已将本次出货追加到现有已发货数量，并实时扣减对应库存。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方“一键保存”同步云端。' : '注意：本地暂存失败，请不要关闭页面，先联系处理。') + '</p></div>');
+    setSaveStatus('已有出货扣减更新，待一键保存云端', 'bad');
     setTimeout(clearPreview, 5000);
   }
 
   function handleOrderFile(file) {
+    state.pendingType = 'order';
     parseExcel(file, function(err, rows) {
       if (err) { showPreview('error', '订单表解析失败：' + err.message); return; }
       if (rows.length < 2) { showPreview('error', '订单表没有数据行'); return; }
@@ -323,7 +325,6 @@
         });
       }
       state.orderParsed = parsed;
-      state.pendingType = 'order';
       matchAndPreviewOrders(parsed, file.name);
     });
   }
@@ -453,10 +454,11 @@
     data.meta.orderRows = Number(data.meta.orderRows || 0) + parsed.length;
     data.meta.generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
     rebuildSummaries(data);
-    var saved = window.LAIKE_STORAGE && window.LAIKE_STORAGE.save && window.LAIKE_STORAGE.save();
+    var saved = window.LAIKE_STORAGE && window.LAIKE_STORAGE.save && window.LAIKE_STORAGE.save(false);
     window.LAIKE_APP.refresh();
     clearPreview();
-    showPreview('success', '<div class="preview-header"><h3>累计并保存完成</h3><p>已将上传的订单数据累计到现有数据，已发货数量保持不变。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '最新数据已保存，下次打开会自动读取。' : '注意：本地保存失败，请不要关闭页面，先联系处理。') + '</p></div>');
+    showPreview('success', '<div class="preview-header"><h3>订单追加完成，待一键保存</h3><p>已将上传的订单数据累计到现有数据，已发货数量保持不变。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方“一键保存”同步云端。' : '注意：本地暂存失败，请不要关闭页面，先联系处理。') + '</p></div>');
+    setSaveStatus('已有新订单更新，待一键保存云端', 'bad');
     setTimeout(clearPreview, 5000);
   }
 
@@ -523,7 +525,7 @@
   }
 
   function showPreview(type, html) {
-    var el = document.getElementById('uploadPreview');
+    var el = activePreviewEl();
     el.style.display = 'block';
     el.className = 'upload-preview ' + (type === 'error' ? 'preview-error' : type === 'success' ? 'preview-success' : '');
     el.innerHTML = html;
@@ -531,9 +533,42 @@
   }
 
   function clearPreview() {
-    var el = document.getElementById('uploadPreview');
+    var el = activePreviewEl();
     el.style.display = 'none';
     el.innerHTML = '';
+  }
+
+  function activePreviewEl() {
+    var id = state.pendingType === 'order' ? 'orderUploadPreview' : state.pendingType === 'shipment' ? 'shipUploadPreview' : 'uploadPreview';
+    return document.getElementById(id) || document.getElementById('uploadPreview');
+  }
+
+  function setSaveStatus(text, type) {
+    var el = document.getElementById('oneClickSaveStatus');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'save-status' + (type ? ' ' + type : '');
+  }
+
+  function oneClickSave() {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !data.rows) {
+      setSaveStatus('当前没有可保存的数据', 'bad');
+      return;
+    }
+    setSaveStatus('正在保存本地与云端...', '');
+    var localSaved = window.LAIKE_STORAGE && window.LAIKE_STORAGE.save && window.LAIKE_STORAGE.save(false);
+    if (!localSaved) {
+      setSaveStatus('本地保存失败，请先不要关闭页面', 'bad');
+      return;
+    }
+    if (window.LAIKE_CLOUD && window.LAIKE_CLOUD.saveData) {
+      window.LAIKE_CLOUD.saveData(data, true).then(function(ok) {
+        setSaveStatus(ok ? '已一键保存到云端' : '本地已保存，云端保存未完成', ok ? 'ok' : 'bad');
+      });
+    } else {
+      setSaveStatus('本地已保存；云端未连接或未配置', 'bad');
+    }
   }
 
   function init() {
@@ -541,6 +576,7 @@
     var orderInput = document.getElementById('orderFileInput');
     var shipDrop = document.getElementById('shipDropZone');
     var orderDrop = document.getElementById('orderDropZone');
+    var oneClickSaveBtn = document.getElementById('oneClickSaveBtn');
 
     if (shipInput) {
       shipInput.addEventListener('change', function(e) {
@@ -570,10 +606,14 @@
         handleOrderFile(file);
       });
     }
+    if (oneClickSaveBtn) oneClickSaveBtn.addEventListener('click', oneClickSave);
   }
 
   function setupDragDrop(zone, input, handler) {
     zone.addEventListener('click', function() { input.click(); });
+    zone.querySelectorAll('.upload-preview').forEach(function(preview) {
+      preview.addEventListener('click', function(e) { e.stopPropagation(); });
+    });
     zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.classList.add('drag-over'); });
     zone.addEventListener('dragleave', function() { zone.classList.remove('drag-over'); });
     zone.addEventListener('drop', function(e) {
