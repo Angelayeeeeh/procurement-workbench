@@ -5,36 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>防伪标查询系统</title>
   <script src="./xlsx.full.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #F0F2F5;
+      --bg: #FAF5F0;
       --panel: #FFFFFF;
-      --ink: #111827;
-      --ink3: #4B5563;
+      --ink: #2D3436;
+      --ink3: #636E72;
       --muted: #9CA3AF;
-      --muted2: #6B7280;
-      --rule: #D1D5DB;
-      --rule-light: #E5E7EB;
-      --blue: #2563EB;
-      --blue-dark: #1D4ED8;
-      --blue-soft: rgba(37, 99, 235, 0.08);
-      --loss: #9B59B6;
-      --loss-soft: rgba(155, 89, 182, 0.10);
-      --loss-border: rgba(155, 89, 182, 0.30);
+      --muted2: #636E72;
+      --rule: #E8E4DE;
+      --rule-light: #EDE9E3;
+      --accent: #E07A5F;
+      --accent-dark: #C95F44;
+      --accent-soft: rgba(224, 122, 95, 0.10);
+      --loss: #9B8AF4;
+      --loss-soft: rgba(155, 138, 244, 0.10);
+      --loss-border: rgba(155, 138, 244, 0.30);
       --warning: #E8A838;
       --warning-soft: rgba(232, 168, 56, 0.12);
       --danger: #D04438;
       --danger-soft: rgba(208, 68, 56, 0.10);
       --accent2: #F4A261;
       --accent2-soft: rgba(244, 162, 97, 0.12);
-      --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
-      --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.05);
-      --radius: 12px;
-      --radius-sm: 8px;
+      --shadow-card: 0 4px 20px rgba(224, 122, 95, 0.06);
+      --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.04);
+      --radius: 16px;
+      --radius-sm: 10px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      font-family: 'Instrument Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
       background: var(--bg);
       color: var(--ink);
       min-height: 100vh;
@@ -69,10 +71,10 @@
       transition: background .15s ease, transform .1s ease;
     }
     .action-bar button:active { transform: scale(0.97); }
-    .export-btn { background: var(--blue); color: #fff; }
-    .export-btn:hover { background: var(--blue-dark); }
-    .update-btn { background: var(--panel); color: var(--blue); border: 1px solid var(--rule); }
-    .update-btn:hover { border-color: var(--blue); background: var(--blue-soft); }
+    .export-btn { background: var(--accent); color: #fff; }
+    .export-btn:hover { background: var(--accent-dark); }
+    .update-btn { background: var(--panel); color: var(--accent); border: 1px solid var(--rule); }
+    .update-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
     .hidden-file-input { display: none; }
 
     /* 【防伪标迭代新增】极简单输入框搜索 */
@@ -82,7 +84,7 @@
       border-radius: var(--radius-sm); padding: 0 16px;
       font-size: 15px; outline: none; background: var(--panel); color: var(--ink);
     }
-    .search-box input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+    .search-box input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     .search-box input::placeholder { color: #B0B8C4; }
     .search-box button {
       height: 48px; border: 0; border-radius: var(--radius-sm);
@@ -90,10 +92,10 @@
       transition: background .15s ease;
     }
     .search-box button:active { transform: scale(0.97); }
-    .search-btn { background: var(--blue); color: #fff; }
-    .search-btn:hover { background: var(--blue-dark); }
+    .search-btn { background: var(--accent); color: #fff; }
+    .search-btn:hover { background: var(--accent-dark); }
     .clear-btn { background: var(--panel); color: var(--muted2); border: 1px solid var(--rule); }
-    .clear-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .clear-btn:hover { border-color: var(--accent); color: var(--accent); }
 
     .stats { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 24px; }
 
@@ -104,7 +106,7 @@
     }
     .message.ok { background: rgba(34, 197, 94, 0.10); color: #16A34A; }
     .message.bad { background: var(--danger-soft); color: var(--danger); }
-    .message.info { background: var(--blue-soft); color: var(--blue); }
+    .message.info { background: var(--accent-soft); color: var(--accent); }
 
     /* 【防伪标迭代新增】查询编号标题栏 */
     .result-code {
@@ -118,7 +120,7 @@
     .card {
       background: var(--panel); border-radius: var(--radius);
       box-shadow: var(--shadow-card); padding: 28px 28px;
-      border-left: 4px solid var(--blue); margin-bottom: 16px;
+      border-left: 4px solid var(--accent); margin-bottom: 16px;
     }
     .card.loss { border-left-color: var(--loss); }
     .card.pending { border-left-color: var(--warning); }
@@ -129,14 +131,14 @@
     .field-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
     .field-value { font-size: 16px; font-weight: 600; color: var(--ink3); }
     .field-value.factory { font-size: 22px; font-weight: 700; color: var(--ink); }
-    .field-value.ship-date { color: var(--blue); font-size: 17px; font-weight: 650; }
+    .field-value.ship-date { color: var(--accent); font-size: 17px; font-weight: 650; }
 
     /* 状态标签 */
     .status-tag {
       display: inline-flex; align-items: center; gap: 4px;
       padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 650;
     }
-    .status-tag.shipped { background: var(--blue-soft); color: var(--blue); }
+    .status-tag.shipped { background: var(--accent-soft); color: var(--accent); }
     .status-tag.pending { background: var(--warning-soft); color: var(--warning); }
     .status-tag.lost { background: var(--danger-soft); color: var(--danger); }
     .status-tag.after { background: var(--accent2-soft); color: var(--accent2); }
@@ -155,7 +157,7 @@
     .stat-item { font-size: 13px; color: var(--muted2); }
     .stat-item strong { font-size: 16px; font-weight: 700; margin: 0 3px; }
     .stat-item.total strong { color: var(--ink); }
-    .stat-item.shipped strong { color: var(--blue); }
+    .stat-item.shipped strong { color: var(--accent); }
     .stat-item.pending strong { color: var(--warning); }
     .stat-item.loss strong { color: var(--loss); }
     .stat-divider { width: 1px; height: 20px; background: var(--rule-light); align-self: center; }
