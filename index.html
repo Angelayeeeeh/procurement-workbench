@@ -1878,81 +1878,98 @@
       }
     }
 
-    /* ========== Angela专属悬浮面板样式（新增，不影响原有样式） ========== */
-    .angela-panel {
-      position: fixed;
-      top: 16px;
-      right: 16px;
-      z-index: 950;
-      width: 320px;
-      max-height: calc(100vh - 32px);
-      background: rgba(255,255,255,0.97);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(232,93,78,0.12);
-      border-radius: 20px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.08), 0 2px 8px rgba(232,93,78,0.06);
-      overflow: hidden;
-      transition: all .35s cubic-bezier(.4,0,.2,1);
+    /* ========== 首页三栏并排布局（新增，不覆盖原有样式） ========== */
+    .home-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .home-row .home-card {
+      background: #FFFFFF;
+      border: 1px solid var(--rule);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-soft);
+      padding: 14px;
+      min-width: 0;
       display: flex;
       flex-direction: column;
     }
-    .angela-panel.minimized {
-      max-height: 42px;
-      overflow: hidden;
+    .home-card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      color: var(--ink);
     }
-    .angela-panel.minimized .angela-panel-body { opacity: 0; }
-    .angela-panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 14px;
-      background: linear-gradient(135deg, rgba(232,93,78,0.06), rgba(244,162,97,0.04));
-      border-bottom: 1px solid rgba(232,93,78,0.08);
-      cursor: pointer;
-      user-select: none;
-      flex-shrink: 0;
-    }
-    .angela-panel-header span {
+    .home-card .home-card-desc {
       font-size: 12px;
-      font-weight: 800;
-      color: var(--accent);
-      letter-spacing: .3px;
-    }
-    .angela-panel-toggle {
-      width: 22px; height: 22px;
-      border: none;
-      background: rgba(0,0,0,0.04);
-      border-radius: 50%;
-      font-size: 11px;
       color: var(--muted);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all .2s ease;
+      margin-bottom: 10px;
     }
-    .angela-panel-toggle:hover {
-      background: var(--accent-soft);
-      color: var(--accent);
-    }
-    .angela-panel-body {
-      padding: 12px 14px;
-      overflow-y: auto;
-      flex: 1;
-      transition: opacity .25s ease;
-    }
-    .angela-panel-body::-webkit-scrollbar { width: 4px; }
-    .angela-panel-body::-webkit-scrollbar-thumb { background: rgba(232,93,78,0.15); border-radius: 4px; }
 
-    /* 板块1: 卡通贴纸区 */
-    .angela-stickers {
+    /* 云同步压缩版 */
+    .home-card .cloud-sync-panel {
+      margin: 0;
+      padding: 0;
+      border: none;
+      box-shadow: none;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+    }
+    .home-card .cloud-sync-panel .cloud-row {
+      gap: 6px;
+    }
+    .home-card .cloud-sync-panel .cloud-row input {
+      min-width: 0;
+      flex: 1;
+      min-height: 32px;
+      font-size: 12px;
+      padding: 4px 8px;
+    }
+    .home-card .cloud-sync-panel .cloud-row .btn {
+      min-height: 32px;
+      font-size: 12px;
+      padding: 4px 12px;
+      white-space: nowrap;
+    }
+    .home-card .cloud-sync-panel .cloud-status {
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    /* 复用原有 overview-card 样式到第二行 */
+    .home-row .overview-card {
+      padding: 14px;
+      margin: 0;
+    }
+
+    @media (max-width: 1100px) {
+      .home-row { grid-template-columns: 1fr 1fr; }
+      .home-row .home-card:last-child,
+      .home-row .overview-card:last-child { grid-column: 1 / -1; }
+    }
+    @media (max-width: 768px) {
+      .home-row { grid-template-columns: 1fr; }
+      .home-row .home-card:last-child,
+      .home-row .overview-card:last-child { grid-column: auto; }
+    }
+
+    /* ========== Angela日历卡片样式（从悬浮面板改为标准卡片） ========== */
+    .angela-calendar-card {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      gap: 10px;
+    }
+    .angela-calendar-card .angela-stickers {
       display: flex;
       justify-content: center;
       align-items: flex-end;
       gap: 12px;
-      padding: 8px 0 12px;
-      min-height: 80px;
+      padding: 4px 0 8px;
+      min-height: 70px;
     }
     .angela-sticker-item {
       position: relative;
@@ -1978,27 +1995,22 @@
       0%,100% { opacity: .3; transform: scale(.8); }
       50% { opacity: 1; transform: scale(1.2); }
     }
-
-    /* 板块2: 时段问候 */
-    .angela-greeting {
+    .angela-calendar-card .angela-greeting {
       text-align: center;
-      padding: 8px 10px;
-      margin-bottom: 10px;
-      border-radius: 12px;
+      padding: 6px 10px;
+      border-radius: 10px;
       background: linear-gradient(135deg, rgba(91,155,213,0.06), rgba(232,93,78,0.04));
       border: 1px solid rgba(91,155,213,0.1);
     }
-    .angela-greeting-icon { font-size: 16px; vertical-align: middle; }
+    .angela-greeting-icon { font-size: 14px; vertical-align: middle; }
     .angela-greeting-text {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       color: #555;
       margin-left: 4px;
     }
-
-    /* 板块3: 简易日历 */
-    .angela-calendar {
-      border-radius: 12px;
+    .angela-calendar-card .angela-calendar {
+      border-radius: 10px;
       overflow: hidden;
       border: 1px solid rgba(232,93,78,0.08);
     }
@@ -2007,9 +2019,9 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 6px 8px;
+      padding: 5px 8px;
       background: rgba(232,93,78,0.04);
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       color: #666;
     }
@@ -2021,53 +2033,50 @@
     }
     .angela-cal-dow {
       text-align: center;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 700;
       color: var(--muted);
-      padding: 3px 0;
+      padding: 2px 0;
       background: rgba(255,255,255,0.8);
     }
     .angela-cal-day {
       text-align: center;
-      font-size: 11px;
-      padding: 4px 0;
+      font-size: 10px;
+      padding: 3px 0;
       background: #fff;
       color: #666;
       transition: all .15s ease;
-      min-height: 22px;
+      min-height: 20px;
     }
     .angela-cal-day.other-month { color: #ccc; }
     .angela-cal-day.today {
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       color: #fff;
       font-weight: 800;
-      border-radius: 6px;
-      box-shadow: 0 2px 6px rgba(232,93,78,0.2);
+      border-radius: 5px;
     }
     .angela-cal-day.birthday-today {
       background: linear-gradient(135deg, #FFD700, #FFA500);
       color: #fff;
       font-weight: 800;
-      border-radius: 6px;
+      border-radius: 5px;
     }
     .angela-cal-day.birthday-tomorrow {
       background: rgba(91,155,213,0.12);
       color: var(--blue);
       font-weight: 700;
-      border-radius: 6px;
+      border-radius: 5px;
     }
     .angela-cal-day.holiday {
       color: var(--accent);
       font-weight: 700;
     }
-
-    /* 生日提醒条 */
     .angela-birthday-alert {
-      margin-top: 8px;
-      padding: 6px 10px;
-      border-radius: 10px;
+      margin-top: 4px;
+      padding: 5px 8px;
+      border-radius: 8px;
       font-size: 11px;
-      line-height: 1.5;
+      line-height: 1.4;
       display: none;
     }
     .angela-birthday-alert.show { display: block; }
@@ -2082,7 +2091,7 @@
       color: var(--blue);
     }
 
-    /* 生日弹窗 */
+    /* 生日弹窗保留 */
     .angela-bday-popup {
       position: fixed; inset: 0; z-index: 9999;
       display: flex; align-items: center; justify-content: center;
@@ -2136,11 +2145,9 @@
     }
     .angela-bday-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(232,93,78,0.3); }
 
-    /* 窄屏适配 */
     @media (max-width: 768px) {
-      .angela-panel { width: 260px; top: 8px; right: 8px; }
       .angela-sticker-item svg { width: 48px; height: 48px; }
-      .angela-greeting-text { font-size: 12px; }
+      .angela-greeting-text { font-size: 11px; }
     }
   </style>
 </head>
@@ -2168,10 +2175,60 @@
           <button class="btn primary" id="openModalBtn">详细新建</button>
         </div>
       </div>
-      <div class="cloud-sync-panel" id="cloudSyncPanel"><strong>云端同步：需要登录</strong><div class="cloud-row"><input id="cloudEmail" type="email" placeholder="Supabase 登录邮箱" autocomplete="username"><input id="cloudPassword" type="password" placeholder="密码" autocomplete="current-password"><button class="btn primary" id="cloudLoginBtn" type="button">登录云端</button></div><div id="cloudStatusText" class="cloud-status">登录后可把采购工作台数据和防伪标上传库同步到云端数据库。</div></div>
-
+      <!-- ========== 首页三栏并排布局（新增，不修改原有业务逻辑） ========== -->
       <section class="section" data-section="home">
-        <div class="overview-board" id="overviewBoard"><div class="overview-card primary clickable-card" data-overview-nav="reconciliation" title="点击进入工厂月结对账"><div class="overview-head"><div><h3>待下单</h3><span>已完成对账，等待做采购单</span></div><span>月结流转</span></div><div class="overview-kpis"><div class="overview-kpi"><span>数量</span><strong>0</strong></div><div class="overview-kpi amount"><span>金额</span><strong>￥0.00</strong></div></div><div class="overview-note">点击查看需要补采购单号、推进下单的工厂月结单。</div></div><div class="overview-card warning clickable-card" data-overview-nav="finance" title="点击进入财务付款台账"><div class="overview-head"><div><h3>待付款订单</h3><span>财务台账中尚未登记付款</span></div><span>无逾期</span></div><div class="overview-kpis"><div class="overview-kpi"><span>数量</span><strong>0</strong></div><div class="overview-kpi amount"><span>金额</span><strong>￥0.00</strong></div></div><div class="overview-note">点击查看待付款明细、付款日、开票状态和操作按钮。</div></div><div class="overview-card clickable-card" data-overview-nav="reconciliation" title="点击进入订单执行流转"><div class="overview-head"><div><h3>订单执行情况</h3><span>对账 → 采购单 → 付款的闭环进度</span></div><span>订单跟进 0 项</span></div><div class="execution-list"><div class="execution-row wait-reconcile"><span>待对账</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div><div class="execution-row wait-order"><span>待下单</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div><div class="execution-row wait-pay"><span>待付款</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div><div class="execution-row done"><span>已闭环</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div></div><div class="overview-note">统计基于工厂月结流转单；右上角同时提示订单模块未完成事项。</div></div></div>
+        <!-- 第一行：今日导览 | 云同步登录 | 日历板块 -->
+        <div class="home-row">
+          <!-- 左：今日导览 -->
+          <div class="home-card">
+            <h3>今日导览</h3>
+            <div class="home-card-desc">采购工作台核心数据一览</div>
+            <div id="homeTodaySummary" style="flex:1;display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--rule);">
+                <span style="font-size:12px;color:var(--muted);">待下单</span>
+                <strong id="homeStatPending" style="font-family:JetBrains Mono,monospace;color:var(--purple);">0</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--rule);">
+                <span style="font-size:12px;color:var(--muted);">待付款</span>
+                <strong id="homeStatPayment" style="font-family:JetBrains Mono,monospace;color:var(--accent);">0</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--rule);">
+                <span style="font-size:12px;color:var(--muted);">本周待办</span>
+                <strong id="homeStatWeekTasks" style="font-family:JetBrains Mono,monospace;color:var(--blue);">0</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:6px 0;">
+                <span style="font-size:12px;color:var(--muted);">逾期事项</span>
+                <strong id="homeStatOverdue" style="font-family:JetBrains Mono,monospace;color:var(--danger);">0</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- 中：云同步登录（压缩版） -->
+          <div class="home-card">
+            <h3>云端同步</h3>
+            <div class="home-card-desc">登录后自动同步数据到云端</div>
+            <div class="cloud-sync-panel" id="cloudSyncPanel"><strong>云端同步：需要登录</strong><div class="cloud-row"><input id="cloudEmail" type="email" placeholder="Supabase 登录邮箱" autocomplete="username"><input id="cloudPassword" type="password" placeholder="密码" autocomplete="current-password"><button class="btn primary" id="cloudLoginBtn" type="button">登录云端</button></div><div id="cloudStatusText" class="cloud-status">登录后可把采购工作台数据和防伪标上传库同步到云端数据库。</div></div>
+          </div>
+
+          <!-- 右：日历板块（原悬浮面板迁移为标准卡片） -->
+          <div class="home-card">
+            <h3>专属日历</h3>
+            <div class="home-card-desc">每日贴纸 · 时段问候 · 当月日历</div>
+            <div class="angela-calendar-card">
+              <div class="angela-stickers" id="angelaStickers"></div>
+              <div class="angela-greeting" id="angelaGreeting"></div>
+              <div class="angela-calendar" id="angelaCalendar"></div>
+              <div class="angela-birthday-alert" id="angelaBirthdayAlert"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 第二行：待下单 | 待付款 | 订单执行 -->
+        <div class="home-row">
+          <div class="overview-card primary clickable-card" data-overview-nav="reconciliation" title="点击进入工厂月结对账"><div class="overview-head"><div><h3>待下单</h3><span>已完成对账，等待做采购单</span></div><span>月结流转</span></div><div class="overview-kpis"><div class="overview-kpi"><span>数量</span><strong>0</strong></div><div class="overview-kpi amount"><span>金额</span><strong>￥0.00</strong></div></div><div class="overview-note">点击查看需要补采购单号、推进下单的工厂月结单。</div></div>
+          <div class="overview-card warning clickable-card" data-overview-nav="finance" title="点击进入财务付款台账"><div class="overview-head"><div><h3>待付款订单</h3><span>财务台账中尚未登记付款</span></div><span>无逾期</span></div><div class="overview-kpis"><div class="overview-kpi"><span>数量</span><strong>0</strong></div><div class="overview-kpi amount"><span>金额</span><strong>￥0.00</strong></div></div><div class="overview-note">点击查看待付款明细、付款日、开票状态和操作按钮。</div></div>
+          <div class="overview-card clickable-card" data-overview-nav="reconciliation" title="点击进入订单执行流转"><div class="overview-head"><div><h3>订单执行情况</h3><span>对账 → 采购单 → 付款的闭环进度</span></div><span>订单跟进 0 项</span></div><div class="execution-list"><div class="execution-row wait-reconcile"><span>待对账</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div><div class="execution-row wait-order"><span>待下单</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div><div class="execution-row wait-pay"><span>待付款</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div><div class="execution-row done"><span>已闭环</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div></div><div class="overview-note">统计基于工厂月结流转单；右上角同时提示订单模块未完成事项。</div></div>
+        </div>
         <div class="card" style="margin-top:14px;">
           <div class="card-header">
             <h3>智能录入工作事项</h3>
@@ -2957,23 +3014,5 @@
   <script src="assets/app.js"></script>
   <script src="assets/procurement-cloud-sync.js"></script>
   <script src="assets/decoration-module.js"></script>
-
-  <!-- ========== Angela专属悬浮面板（新增，不影响原有业务） ========== -->
-  <div class="angela-panel" id="angelaPanel">
-    <div class="angela-panel-header" id="angelaPanelHeader">
-      <span>Angela的独家定制</span>
-      <button class="angela-panel-toggle" id="angelaPanelToggle" type="button" title="收起/展开">−</button>
-    </div>
-    <div class="angela-panel-body" id="angelaPanelBody">
-      <!-- 板块1: 卡通贴纸区 -->
-      <div class="angela-stickers" id="angelaStickers"></div>
-      <!-- 板块2: 时段问候 -->
-      <div class="angela-greeting" id="angelaGreeting"></div>
-      <!-- 板块3: 当月日历 -->
-      <div class="angela-calendar" id="angelaCalendar"></div>
-      <!-- 生日提醒条 -->
-      <div class="angela-birthday-alert" id="angelaBirthdayAlert"></div>
-    </div>
-  </div>
 
 </body></html>

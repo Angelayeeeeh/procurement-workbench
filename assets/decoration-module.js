@@ -372,38 +372,6 @@
     popup.querySelector('.angela-bday-mask').addEventListener('click', closePopup);
   }
 
-  /* ========== 面板收起/展开 ========== */
-  function initPanelToggle() {
-    var panel = document.getElementById('angelaPanel');
-    var header = document.getElementById('angelaPanelHeader');
-    var toggle = document.getElementById('angelaPanelToggle');
-    if (!panel || !header || !toggle) return;
-
-    // 恢复上次状态
-    try {
-      if (localStorage.getItem(PANEL_MIN_KEY) === 'true') {
-        panel.classList.add('minimized');
-        toggle.textContent = '+';
-      }
-    } catch (e) {}
-
-    function togglePanel() {
-      panel.classList.toggle('minimized');
-      var isMin = panel.classList.contains('minimized');
-      toggle.textContent = isMin ? '+' : '−';
-      try { localStorage.setItem(PANEL_MIN_KEY, isMin ? 'true' : 'false'); } catch (e) {}
-    }
-
-    header.addEventListener('click', function (e) {
-      if (e.target === toggle) return;
-      togglePanel();
-    });
-    toggle.addEventListener('click', function (e) {
-      e.stopPropagation();
-      togglePanel();
-    });
-  }
-
   /* ========== 定时刷新 ========== */
   function startTimers() {
     // 每分钟刷新问候语（跨时段更新）
@@ -427,7 +395,6 @@
     renderGreeting();
     renderCalendar();
     renderBirthdayAlert();
-    initPanelToggle();
     startTimers();
 
     // 页面加载后检查生日弹窗
