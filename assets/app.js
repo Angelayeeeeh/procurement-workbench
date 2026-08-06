@@ -376,6 +376,10 @@
     state.customEmailTemplates = Array.isArray(state.customEmailTemplates) ? state.customEmailTemplates : [];
     // 【合同迭代新增】合同数据数组
     state.contracts = Array.isArray(state.contracts) ? state.contracts : [];
+    // 【莱克专属库存转移】若合同数据为空，自动载入默认合同（含山东莱克科技有限公司），确保供应商名片存在
+    if (state.contracts.length === 0 && typeof defaultContracts !== 'undefined') {
+      state.contracts = defaultContracts.slice();
+    }
     // 工厂代管库存总账：按「工厂名称 -> GY号」保存当前库存数量，Excel采购单确认后自动累加。
     state.factoryInventory = state.factoryInventory && typeof state.factoryInventory === 'object' ? state.factoryInventory : {};
     // 工厂代管库存流水：记录每一次采购单入库来源，便于从库存回溯到订单号。
@@ -1130,7 +1134,7 @@
     }
     title.textContent = selectedFactory + '・工厂库存管理';
     var localInventoryHtml = renderFactoryManagedInventoryHTML(selectedFactory);
-    if (selectedFactory === '莱克') {
+    if (selectedFactory === '莱克' || selectedFactory === '山东莱克科技有限公司') {
       summary.textContent = '单HTML内置库存台账；可通过“莱克专属库存”进入订单出货看板。';
       body.innerHTML =
         localInventoryHtml +
@@ -1149,7 +1153,7 @@
       var stocks = factoryInventoryStockRows(factory);
       var totalQty = stocks.reduce(function (sum, item) { return sum + Number(item.库存数量 || 0); }, 0);
       var latest = factoryLatestInventoryMovement(factory);
-      var laikeLink = factory === '莱克'
+      var laikeLink = (factory === '莱克' || factory === '山东莱克科技有限公司')
         ? '<a class="btn primary" href="./laike-inventory-dashboard/laike-inventory-dashboard.html" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px;padding:6px 10px;min-height:auto;">莱克专属库存</a>'
         : '';
       return '<div class="factory-card" data-inventory-factory-card="' + escapeHTML(factory) + '"><div><h4>' + escapeHTML(factory) + '</h4>' +
@@ -1368,7 +1372,7 @@
     var movements = (state.factoryInventoryMovements || []).filter(function (m) { return m.factory === factory; }).slice(0, 20);
     var totalQty = stocks.reduce(function (sum, item) { return sum + Number(item.qty || 0); }, 0);
     var currentOrderNo = factoryLatestPurchaseOrderNo(factory);
-    var laikeDedicatedLink = factory === '莱克'
+    var laikeDedicatedLink = (factory === '莱克' || factory === '山东莱克科技有限公司')
       ? '<a class="btn primary" href="./laike-inventory-dashboard/laike-inventory-dashboard.html" target="_blank" rel="noopener">莱克专属库存</a>'
       : '';
     var uploadZoneHtml = '<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:14px;">' +
