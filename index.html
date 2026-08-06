@@ -2223,12 +2223,8 @@
           </div>
         </div>
 
-        <!-- 第二行：待下单 | 待付款 | 订单执行 -->
-        <div class="home-row">
-          <div class="overview-card primary clickable-card" data-overview-nav="reconciliation" title="点击进入工厂月结对账"><div class="overview-head"><div><h3>待下单</h3><span>已完成对账，等待做采购单</span></div><span>月结流转</span></div><div class="overview-kpis"><div class="overview-kpi"><span>数量</span><strong>0</strong></div><div class="overview-kpi amount"><span>金额</span><strong>￥0.00</strong></div></div><div class="overview-note">点击查看需要补采购单号、推进下单的工厂月结单。</div></div>
-          <div class="overview-card warning clickable-card" data-overview-nav="finance" title="点击进入财务付款台账"><div class="overview-head"><div><h3>待付款订单</h3><span>财务台账中尚未登记付款</span></div><span>无逾期</span></div><div class="overview-kpis"><div class="overview-kpi"><span>数量</span><strong>0</strong></div><div class="overview-kpi amount"><span>金额</span><strong>￥0.00</strong></div></div><div class="overview-note">点击查看待付款明细、付款日、开票状态和操作按钮。</div></div>
-          <div class="overview-card clickable-card" data-overview-nav="reconciliation" title="点击进入订单执行流转"><div class="overview-head"><div><h3>订单执行情况</h3><span>对账 → 采购单 → 付款的闭环进度</span></div><span>订单跟进 0 项</span></div><div class="execution-list"><div class="execution-row wait-reconcile"><span>待对账</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div><div class="execution-row wait-order"><span>待下单</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div><div class="execution-row wait-pay"><span>待付款</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div><div class="execution-row done"><span>已闭环</span><div class="execution-bar"><i style="width:0%"></i></div><strong class="mono">0</strong></div></div><div class="overview-note">统计基于工厂月结流转单；右上角同时提示订单模块未完成事项。</div></div>
-        </div>
+        <!-- 第二行：待下单 | 待付款 | 订单执行（由 app.js renderMetrics 动态渲染） -->
+        <div class="home-row" id="overviewBoard"></div>
         <div class="card" style="margin-top:14px;">
           <div class="card-header">
             <h3>智能录入工作事项</h3>

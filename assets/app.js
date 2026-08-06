@@ -890,6 +890,23 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
+
+    /* ========== 更新今日导览卡片数据（新增，不修改原有逻辑） ========== */
+    var weekTaskCount = state.records.filter(function (r) {
+      return r.status !== '已完成' && isWithin(r.dueDate, startOfWeek(today()), endOfWeek(today()));
+    }).length;
+    var overdueCount = state.records.filter(isOverdue).length;
+    var invoicePending = (state.financePayments || []).filter(function (p) {
+      return p.invoiceStatus && p.invoiceStatus !== '无需开票' && p.invoiceStatus !== '已开票';
+    }).length;
+    var elPending = $('homeStatPending');
+    var elPayment = $('homeStatPayment');
+    var elWeek = $('homeStatWeekTasks');
+    var elOverdue = $('homeStatOverdue');
+    if (elPending) elPending.textContent = waitOrder;
+    if (elPayment) elPayment.textContent = waitPayOrders.length;
+    if (elWeek) elWeek.textContent = weekTaskCount;
+    if (elOverdue) elOverdue.textContent = overdueCount;
   }
 
   function renderHomeLists() {
