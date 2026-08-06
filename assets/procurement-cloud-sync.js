@@ -89,7 +89,7 @@
         '<button class="btn primary" id="cloudSaveBtn" type="button">保存当前数据到云端</button>' +
         '<button class="btn" id="cloudLogoutBtn" type="button">退出登录</button>' +
       '</div>' +
-      '<div id="cloudStatusText" class="cloud-status">云端已连接。建议在大量编辑后点击“保存当前数据到云端”。</div>';
+      '<div id="cloudStatusText" class="cloud-status">云端已连接，本地数据每10秒自动同步到云端（仅推送，不拉取）。如需从云端恢复数据，请手动点击“读取云端最新数据”。</div>';
     document.getElementById('cloudLoadBtn').addEventListener('click', function () { loadData(true); });
     document.getElementById('cloudSaveBtn').addEventListener('click', function () { saveData(true); });
     document.getElementById('cloudLogoutBtn').addEventListener('click', signOut);
@@ -110,7 +110,10 @@
       }
       session = res.data.session;
       renderAuth();
-      loadData(true);
+      // 【关键修改】登录后不自动拉取云端数据，本地数据优先并自动同步到云端
+      // 如需从云端恢复数据，请手动点击"读取云端最新数据"按钮
+      setStatus('登录成功，本地数据将每10秒自动同步到云端', 'ok');
+      saveData(false);
     });
   }
 
@@ -213,12 +216,17 @@
   client.auth.getSession().then(function (res) {
     session = res.data && res.data.session;
     renderAuth();
-    if (session) loadData(false);
+    // 【关键修改】不自动从云端拉取数据到本机，本地数据优先
+    // 登录后立即推送一次本地数据到云端，之后每10秒自动推送
+    if (session) {
+      setStatus('已登录，本地数据每10秒自动同步到云端（不会拉取云端数据覆盖本地）', 'ok');
+      saveData(false);
+    }
   });
 
   client.auth.onAuthStateChange(function (event, newSession) {
     session = newSession;
     renderAuth();
-    if (session && event === 'SIGNED_IN') loadData(true);
+    // 【关键修改】不自动从云端拉取数据，仅手动点击"读取云端最新数据"时才拉取
   });
 })();

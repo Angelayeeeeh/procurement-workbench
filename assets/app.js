@@ -842,10 +842,16 @@
     }, 0);
     var waitReconcile = flows.filter(function (f) { return f.reconciliationStatus !== '已完成'; }).length;
     var waitOrder = waitOrderFlows.length;
-    var waitPay = flows.filter(function (f) {
+    // 【修改】待付款 = 流转上传采购单未付款 + 临时付款未付款
+    var waitPayFlows = flows.filter(function (f) {
       return f.orderStatus === '已完成' && f.paymentStatus !== '已付款';
     }).length;
-    var closed = flows.filter(function (f) { return f.paymentStatus === '已付款'; }).length;
+    var tempPayCount = payments.filter(function (p) {
+      return p.type === '临时付款' && p.paymentStatus !== '已付款';
+    }).length;
+    var totalWaitPay = waitPayFlows + tempPayCount;
+    // 【修改】已开票 = 付款发票管理中已完成开票的采购订单
+    var invoicedCount = payments.filter(function (p) { return p.invoiceStatus === '已开票'; }).length;
     var totalFlow = Math.max(flows.length, 1);
     var payOverdue = waitPayOrders.filter(function (p) {
       return p.dueDate && p.dueDate < toYMD(today());
@@ -856,8 +862,8 @@
     var execRows = [
       { cls: 'wait-reconcile', label: '待对账', count: waitReconcile },
       { cls: 'wait-order', label: '待下单', count: waitOrder },
-      { cls: 'wait-pay', label: '待付款', count: waitPay },
-      { cls: 'done', label: '已闭环', count: closed }
+      { cls: 'wait-pay', label: '待付款', count: totalWaitPay },
+      { cls: 'done', label: '已开票', count: invoicedCount }
     ];
     board.innerHTML =
       '<div class="overview-card primary clickable-card" data-overview-nav="reconciliation" title="点击进入工厂月结对账">' +
@@ -877,12 +883,12 @@
         '<div class="overview-note">点击查看待付款明细、付款日、开票状态和操作按钮。</div>' +
       '</div>' +
       '<div class="overview-card clickable-card" data-overview-nav="reconciliation" title="点击进入订单执行流转">' +
-        '<div class="overview-head"><div><h3>订单执行情况</h3><span>对账 → 采购单 → 付款的闭环进度</span></div><span>订单跟进 ' + activeOrderTasks + ' 项</span></div>' +
+        '<div class="overview-head"><div><h3>订单执行情况</h3><span>对账 → 采购单 → 付款 → 开票进度</span></div><span>订单跟进 ' + activeOrderTasks + ' 项</span></div>' +
         '<div class="execution-list">' + execRows.map(function (row) {
           var pct = Math.round(row.count / totalFlow * 100);
           return '<div class="execution-row ' + row.cls + '"><span>' + row.label + '</span><div class="execution-bar"><i style="width:' + pct + '%"></i></div><strong class="mono">' + row.count + '</strong></div>';
         }).join('') + '</div>' +
-        '<div class="overview-note">统计基于工厂月结流转单；右上角同时提示订单模块未完成事项。</div>' +
+        '<div class="overview-note">待付款含流转上传采购单及临时付款；已开票统计付款发票管理中已完成开票的订单。</div>' +
       '</div>';
     board.querySelectorAll('[data-overview-nav]').forEach(function (card) {
       card.addEventListener('click', function () {
@@ -904,7 +910,7 @@
     var elWeek = $('homeStatWeekTasks');
     var elOverdue = $('homeStatOverdue');
     if (elPending) elPending.textContent = waitOrder;
-    if (elPayment) elPayment.textContent = waitPayOrders.length;
+    if (elPayment) elPayment.textContent = totalWaitPay;
     if (elWeek) elWeek.textContent = weekTaskCount;
     if (elOverdue) elOverdue.textContent = overdueCount;
   }
