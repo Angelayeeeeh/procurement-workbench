@@ -2763,6 +2763,23 @@
       </section>
 
       <section class="section" data-section="contracts">
+        <!-- 【合同迭代新增】合同时效管理卡片 -->
+        <div class="card" style="margin-bottom:14px;">
+          <div class="card-header">
+            <h3>合同时效管理</h3>
+            <span>合同到期前 2 个月自动预警，提示提前准备续签</span>
+          </div>
+          <div class="card-body">
+            <div class="pill-row" style="margin-bottom:14px;">
+              <button class="btn primary" id="contractUploadBtn" type="button">上传合同 Excel</button>
+              <button class="btn" id="contractAddSupplierBtn" type="button">添加供应商</button>
+              <input type="file" id="contractFileInput" accept=".xlsx,.xls" style="display:none;">
+            </div>
+            <div id="contractExpiryStats" style="margin-bottom:14px;"></div>
+            <div id="contractExpiryTable"></div>
+          </div>
+        </div>
+        <!-- 原有合同工作记录表（保持不变） -->
         <div class="card">
           <div class="card-header">
             <h3>合同管理</h3>

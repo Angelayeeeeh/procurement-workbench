@@ -5,6 +5,22 @@
 
   var defaultFactories = ['莱克', '纯发', '纳科达', '汇财', '和润宇', '小松'];
   var factories = defaultFactories.slice();
+
+  /* ========== 【合同迭代新增】默认合同数据（来自合同汇总 Excel） ========== */
+  var defaultContracts = [
+    { contractType: '供应商合同', factory: '河北新派瑞新能源材料有限公司', category: '防冻液', startDate: '2025-09-24', expiryDate: '2026-09-23' },
+    { contractType: '生产授权', factory: '东莞市纯发实业有限公司', category: 'EP5无骨雨刷，EP8复合式雨刷', startDate: '2025-10-22', expiryDate: '2026-12-31' },
+    { contractType: '供应商合同', factory: '山东莱克科技有限公司', category: '制动液和防冻液', startDate: '2025-12-09', expiryDate: '2026-12-31' },
+    { contractType: '供应商合同', factory: '佛山市卡皮诺复合材料有限公司', category: '改色膜', startDate: '2026-01-20', expiryDate: '2027-01-19' },
+    { contractType: '供应商合同', factory: '南通纳尔材料科技有限公司', category: '窗膜、车衣', startDate: '2025-03-18', expiryDate: '2027-03-17' },
+    { contractType: '供应商合同', factory: '江西和润宇电源科技有限公司', category: '蓄电池', startDate: '2026-03-13', expiryDate: '2026-12-31' },
+    { contractType: '供应商合同', factory: '运研材料科技（上海）有限公司', category: '隐形车衣', startDate: '2026-04-01', expiryDate: '2027-03-31' },
+    { contractType: '供应商合同', factory: '江西科为薄膜新型材料有限公司', category: '窗膜', startDate: '2026-04-17', expiryDate: '2027-04-16' },
+    { contractType: '供应商合同', factory: '宁波中炫电子科技有限公司', category: '火花塞', startDate: '2026-01-01', expiryDate: '2026-12-31' },
+    { contractType: '三方合同', factory: '纳琳科新材料（南通）有限公司&郑州汇财包装有限公司', category: '汽车窗膜', startDate: '2026-05-17', expiryDate: '2027-05-16' },
+    { contractType: '三方合同', factory: '海安浩驰科技有限公司&郑州汇财包装有限公司', category: '汽车窗膜', startDate: '2026-05-23', expiryDate: '2027-05-22' },
+    { contractType: '三方合同', factory: '南通纳科达聚氨酯科技有限公司', category: '隐形车衣&天窗冰甲', startDate: '2026-07-16', expiryDate: '2027-07-15' }
+  ];
   var modules = [
     { id: 'suppliers', name: '供应商管理' },
     { id: 'orders', name: '采购订单 & 跟进' },
@@ -320,6 +336,7 @@
     return {
       records: seedRecords(),
       suppliers: defaultSupplierProfiles(),
+      contracts: defaultContracts.slice(),
       createdAt: nowISO()
     };
   }
@@ -359,6 +376,8 @@
     state.deletedSuppliers = Array.isArray(state.deletedSuppliers) ? state.deletedSuppliers : [];
     state.operationLogs = Array.isArray(state.operationLogs) ? state.operationLogs : [];
     state.customEmailTemplates = Array.isArray(state.customEmailTemplates) ? state.customEmailTemplates : [];
+    // 【合同迭代新增】合同数据数组
+    state.contracts = Array.isArray(state.contracts) ? state.contracts : [];
     // 工厂代管库存总账：按「工厂名称 -> GY号」保存当前库存数量，Excel采购单确认后自动累加。
     state.factoryInventory = state.factoryInventory && typeof state.factoryInventory === 'object' ? state.factoryInventory : {};
     // 工厂代管库存流水：记录每一次采购单入库来源，便于从库存回溯到订单号。
@@ -423,6 +442,26 @@
           createdAt: nowISO()
         });
       }
+    });
+    // 【合同迭代新增】合同数据中的工厂名称自动补入供应商、库存和防伪标管理
+    (state.contracts || []).forEach(function (contract) {
+      var name = contract.factory;
+      if (!name) return;
+      if (state.deletedSuppliers.indexOf(name) >= 0) return;
+      if (!state.suppliers.some(function (s) { return s.name === name; })) {
+        state.suppliers.push({
+          name: name,
+          contact: '',
+          products: contract.category || '',
+          settle: '',
+          note: '由合同管理自动补入。',
+          createdAt: nowISO()
+        });
+      }
+      if (typeof state.antifakeStock[name] !== 'number') state.antifakeStock[name] = 0;
+      if (typeof state.antifakeThresholds[name] !== 'number') state.antifakeThresholds[name] = 50;
+      if (!state.antifakeExempt[name]) state.antifakeExempt[name] = false;
+      if (!state.antifakeExemptNote[name]) state.antifakeExemptNote[name] = '';
     });
     state.suppliers.forEach(function (supplier) {
       if (supplier.name && typeof state.antifakeStock[supplier.name] !== 'number') {
@@ -640,6 +679,9 @@
     });
     $('closeSupplierModalBtn').addEventListener('click', closeSupplierModal);
     $('supplierForm').addEventListener('submit', onSupplierSubmit);
+    // 【合同迭代新增】合同管理事件绑定
+    setupContractUpload();
+    setupContractAddSupplierBtn();
     $('antifakeMoveForm').addEventListener('submit', onAntifakeMoveSubmit);
     var antifakeSubtabs = $('antifakeSubtabs');
     if (antifakeSubtabs) {
@@ -823,6 +865,7 @@
     renderFinancePaymentPanel();
     renderTables();
     renderOperationLogPanel();
+    renderContractExpiry();
   }
 
   function renderMetrics() {
@@ -3519,6 +3562,8 @@
       weeklyCategory: 'auto'
     }, true);
     syncEmailOrderFactory(orderNo, supplier);
+    // 【合同迭代新增】PDF采购订单确认后也自动填充智能邮箱
+    autoFillEmailFromOrder(orderNo, supplier);
     saveState();
     renderSelects();
     renderAll();
@@ -4312,6 +4357,8 @@
     var antifakeResult = applyAntifakeOrderDeduction(group, parsed.fileName);
     if (upsertPurchaseOrderPayment(group, record, amount, parsed.fileName)) updatedPayments++;
     syncEmailOrderFactory(group.orderNo, group.supplier);
+    // 【合同迭代新增】采购订单确认后自动填充智能邮箱的订单号和供应商名称
+    autoFillEmailFromOrder(group.orderNo, group.supplier);
     saveState();
     renderSelects();
     renderAll();
@@ -5748,6 +5795,221 @@
     toast.timer = setTimeout(function () {
       el.classList.remove('show');
     }, 1800);
+  }
+
+  /* ========== 【合同迭代新增】合同时效管理 ========== */
+
+  function renderContractExpiry() {
+    var contracts = state.contracts || [];
+    var statsEl = $('contractExpiryStats');
+    var tableEl = $('contractExpiryTable');
+    if (!statsEl || !tableEl) return;
+
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var WARNING_DAYS = 60;
+    var valid = 0, warning = 0, expired = 0;
+
+    contracts.forEach(function (c) {
+      var expiry = new Date(c.expiryDate);
+      expiry.setHours(0, 0, 0, 0);
+      var diffDays = Math.floor((expiry - today) / 86400000);
+      if (diffDays < 0) expired++;
+      else if (diffDays <= WARNING_DAYS) warning++;
+      else valid++;
+    });
+
+    statsEl.innerHTML =
+      '<div class="pill-row">' +
+        '<span class="pill">合同总数：' + contracts.length + ' 份</span>' +
+        '<span class="pill" style="background:#e8f5e9;color:#2e7d32;">有效：' + valid + ' 份</span>' +
+        '<span class="pill" style="background:#fff3e0;color:#e65100;">即将到期（2个月内）：' + warning + ' 份</span>' +
+        '<span class="pill" style="background:#ffebee;color:#c62828;">已过期：' + expired + ' 份</span>' +
+      '</div>';
+
+    if (!contracts.length) {
+      tableEl.innerHTML = '<div class="empty">暂无合同数据，请点击「上传合同 Excel」导入合同汇总表。</div>';
+      return;
+    }
+
+    var sorted = contracts.slice().sort(function (a, b) {
+      return new Date(a.expiryDate) - new Date(b.expiryDate);
+    });
+
+    var rows = sorted.map(function (c, idx) {
+      var expiry = new Date(c.expiryDate);
+      expiry.setHours(0, 0, 0, 0);
+      var diffDays = Math.floor((expiry - today) / 86400000);
+      var statusHTML, rowClass;
+      if (diffDays < 0) {
+        statusHTML = '<span class="status" style="background:#c62828;color:#fff;">已过期 ' + Math.abs(diffDays) + ' 天</span>';
+        rowClass = ' style="background:#ffebee;"';
+      } else if (diffDays <= WARNING_DAYS) {
+        statusHTML = '<span class="status" style="background:#e65100;color:#fff;">即将到期 · 剩余 ' + diffDays + ' 天</span>';
+        rowClass = ' style="background:#fff3e0;"';
+      } else {
+        statusHTML = '<span class="status" style="background:#2e7d32;color:#fff;">有效 · 剩余 ' + diffDays + ' 天</span>';
+        rowClass = '';
+      }
+      return '<tr' + rowClass + '>' +
+        '<td>' + escapeHTML(c.contractType || '') + '</td>' +
+        '<td><strong>' + escapeHTML(c.factory || '') + '</strong></td>' +
+        '<td>' + escapeHTML(c.category || '') + '</td>' +
+        '<td class="mono">' + escapeHTML(c.startDate || '') + '</td>' +
+        '<td class="mono">' + escapeHTML(c.expiryDate || '') + '</td>' +
+        '<td>' + statusHTML + '</td>' +
+        '<td><button class="btn danger" style="font-size:12px;padding:4px 10px;min-height:auto;" onclick="window.__deleteContract(' + idx + ')">删除</button></td>' +
+      '</tr>';
+    }).join('');
+
+    tableEl.innerHTML =
+      '<div class="table-wrap"><table><thead><tr>' +
+        '<th>合同类型</th><th>工厂名称</th><th>品类</th><th>合同开始日</th><th>合同到期日</th><th>状态 / 预警</th><th>操作</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  window.__deleteContract = function (sortedIdx) {
+    var contracts = state.contracts || [];
+    var sorted = contracts.slice().sort(function (a, b) {
+      return new Date(a.expiryDate) - new Date(b.expiryDate);
+    });
+    var target = sorted[sortedIdx];
+    if (!target) return;
+    var realIdx = contracts.findIndex(function (c) {
+      return c.factory === target.factory && c.expiryDate === target.expiryDate && c.contractType === target.contractType;
+    });
+    if (realIdx < 0) return;
+    contracts.splice(realIdx, 1);
+    saveState();
+    renderContractExpiry();
+    toast('已删除该合同记录');
+  };
+
+  function setupContractUpload() {
+    var btn = $('contractUploadBtn');
+    var input = $('contractFileInput');
+    if (!btn || !input) return;
+    btn.addEventListener('click', function () { input.click(); });
+    input.addEventListener('change', function (e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      parseContractExcel(file);
+      input.value = '';
+    });
+  }
+
+  function parseContractExcel(file) {
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        var data = new Uint8Array(e.target.result);
+        var workbook = XLSX.read(data, { type: 'array' });
+        var sheet = workbook.Sheets[workbook.SheetNames[0]];
+        var rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        if (!rows.length) { toast('Excel 中未读取到数据'); return; }
+
+        var headerMap = {
+          '合同类型': ['合同类型', '合同 类型'],
+          '工厂名称': ['工厂名称', '工厂 名称', '供应商'],
+          '品类': ['品类', '产品类别', '品名'],
+          '合同开始日': ['合同开始日', '开始日期', '合同开始日期'],
+          '合同到期日': ['合同到期日', '到期日期', '合同到期日期', '结束日期']
+        };
+
+        function findCol(row, keys) {
+          for (var i = 0; i < keys.length; i++) {
+            if (row[keys[i]] !== undefined && row[keys[i]] !== '') return row[keys[i]];
+          }
+          return '';
+        }
+
+        function formatDate(val) {
+          if (!val) return '';
+          if (val instanceof Date) return val.toISOString().slice(0, 10);
+          var s = String(val).trim();
+          if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+          if (/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)) {
+            var parts = s.split(/[\/\s]/);
+            return parts[0] + '-' + String(parts[1]).padStart(2, '0') + '-' + String(parts[2]).padStart(2, '0');
+          }
+          var d = new Date(s);
+          if (!isNaN(d)) return d.toISOString().slice(0, 10);
+          return s;
+        }
+
+        var newContracts = [];
+        var addedSuppliers = [];
+        rows.forEach(function (row) {
+          var factory = String(findCol(row, headerMap['工厂名称'])).trim();
+          if (!factory) return;
+          var contract = {
+            contractType: String(findCol(row, headerMap['合同类型'])).trim(),
+            factory: factory,
+            category: String(findCol(row, headerMap['品类'])).trim(),
+            startDate: formatDate(findCol(row, headerMap['合同开始日'])),
+            expiryDate: formatDate(findCol(row, headerMap['合同到期日']))
+          };
+          newContracts.push(contract);
+          if (ensureContractSupplier(factory)) addedSuppliers.push(factory);
+        });
+
+        state.contracts = newContracts;
+        saveState();
+        renderContractExpiry();
+        renderFactoryCards();
+        renderFactoryInventoryPanel();
+        renderSelects();
+        var msg = '已导入 ' + newContracts.length + ' 份合同记录';
+        if (addedSuppliers.length) {
+          msg += '；自动新增供应商 ' + addedSuppliers.length + ' 家：' + addedSuppliers.join('、');
+        }
+        toast(msg);
+      } catch (err) {
+        toast('解析 Excel 失败：' + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function ensureContractSupplier(name) {
+    if (!name) return false;
+    if (state.suppliers.some(function (s) { return s.name === name; })) return false;
+    state.suppliers.push({
+      name: name,
+      contact: '',
+      products: '',
+      settle: '',
+      note: '由合同管理自动补入。',
+      createdAt: nowISO()
+    });
+    state.antifakeStock[name] = 0;
+    state.antifakeThresholds[name] = 50;
+    state.antifakeExempt[name] = false;
+    state.antifakeExemptNote[name] = '';
+    state.deletedSuppliers = (state.deletedSuppliers || []).filter(function (n) { return n !== name; });
+    syncFactories();
+    return true;
+  }
+
+  function setupContractAddSupplierBtn() {
+    var btn = $('contractAddSupplierBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function () { openSupplierModal(); });
+  }
+
+  /* ========== 【合同迭代新增】采购订单确认后自动填充智能邮箱 ========== */
+  function autoFillEmailFromOrder(orderNo, supplier) {
+    var orderInput = $('emailOrderNo');
+    var factoryInput = $('emailFactory');
+    var matchEl = $('emailFactoryMatch');
+    if (!orderInput || !factoryInput) return;
+    orderInput.value = orderNo || '';
+    factoryInput.value = supplier || '';
+    if (matchEl && orderNo && supplier) {
+      matchEl.innerHTML = '已自动填充：<strong>' + escapeHTML(supplier) + '</strong> · 订单号 <span class="mono">' + escapeHTML(orderNo) + '</span>';
+    }
+    syncEmailFactoryByOrder();
+    renderSmartEmail();
   }
 
   window.PROCUREMENT_WORKBENCH = {
