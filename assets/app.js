@@ -28,7 +28,6 @@
     { id: 'finance', name: '付款 & 发票管理' },
     { id: 'reconciliation', name: '工厂月结对账' },
     { id: 'antifake', name: '防伪标管理' },
-    { id: 'contracts', name: '合同管理' },
     { id: 'projects', name: '项目专项跟进' }
   ];
   var sections = [
@@ -39,7 +38,6 @@
     { id: 'finance', name: '付款 & 发票管理', desc: '货款付款、发票状态、运研报价与返利核算。' },
     { id: 'reconciliation', name: '工厂月结对账', desc: '按工厂和月份记录账单金额、差异项、确认状态、付款衔接和关闭时间。' },
     { id: 'antifake', name: '防伪标管理', desc: '记录防伪标申请、领用、库存、使用批次、产品关联和异常处理。' },
-    { id: 'contracts', name: '合同管理', desc: '供应商合同续签、条款沟通、寄件进度和归档状态。' },
     { id: 'weekly', name: '周报管理', desc: '工作日持续录入，按本周记录生成精简采购周报。' },
     { id: 'projects', name: '项目专项跟进', desc: '莱克机油 T7/T9、防冻液标贴、纯发雨刷 LOGO、不良品和样品寄送。' }
   ];
@@ -675,6 +673,7 @@
         renderFactoryCards();
         renderFactoryInventoryPanel();
         renderFactoryFollowDetail();
+        if (supplierSubdir === 'contracts') renderContractExpiry();
       });
     });
     $('closeSupplierModalBtn').addEventListener('click', closeSupplierModal);
@@ -1054,12 +1053,15 @@
   function renderSupplierSubdir() {
     var profile = $('supplierProfilePanel');
     var inventory = $('supplierInventoryPanel');
+    var contracts = $('supplierContractsPanel');
     if (!profile || !inventory) return;
     profile.style.display = supplierSubdir === 'profile' ? 'block' : 'none';
     inventory.style.display = supplierSubdir === 'inventory' ? 'block' : 'none';
+    if (contracts) contracts.style.display = supplierSubdir === 'contracts' ? 'block' : 'none';
     document.querySelectorAll('[data-supplier-tab]').forEach(function (btn) {
       btn.classList.toggle('active', btn.getAttribute('data-supplier-tab') === supplierSubdir);
     });
+    if (supplierSubdir === 'contracts') renderContractExpiry();
   }
 
   function renderFactoryCards() {
@@ -5896,79 +5898,173 @@
       parseContractExcel(file);
       input.value = '';
     });
+    /* 【合同迭代新增】确认上传按钮 — 用户核对预览数据后才正式入库 */
+    var confirmBtn = $('contractConfirmBtn');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', function () {
+        if (!pendingContracts || !pendingContracts.length) { toast('没有待确认的合同数据'); return; }
+        var addedSuppliers = [];
+        pendingContracts.forEach(function (contract) {
+          if (ensureContractSupplier(contract.factory)) addedSuppliers.push(contract.factory);
+        });
+        state.contracts = pendingContracts;
+        saveState();
+        renderContractExpiry();
+        renderFactoryCards();
+        renderFactoryInventoryPanel();
+        renderSelects();
+        var msg = '已导入 ' + pendingContracts.length + ' 份合同记录';
+        if (addedSuppliers.length) {
+          msg += '；自动新增供应商 ' + addedSuppliers.length + ' 家：' + addedSuppliers.join('、');
+        }
+        toast(msg);
+        pendingContracts = null;
+        var previewArea = $('contractPreviewArea');
+        if (previewArea) previewArea.style.display = 'none';
+      });
+    }
+    /* 【合同迭代新增】取消按钮 — 丢弃预览数据 */
+    var cancelBtn = $('contractCancelBtn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', function () {
+        pendingContracts = null;
+        var previewArea = $('contractPreviewArea');
+        if (previewArea) previewArea.style.display = 'none';
+        toast('已取消上传');
+      });
+    }
   }
+
+  /* 【合同迭代新增】待确认的合同数据暂存 */
+  var pendingContracts = null;
 
   function parseContractExcel(file) {
     var reader = new FileReader();
     reader.onload = function (e) {
       try {
         var data = new Uint8Array(e.target.result);
-        var workbook = XLSX.read(data, { type: 'array' });
+        var workbook = XLSX.read(data, { type: 'array', cellDates: true });
         var sheet = workbook.Sheets[workbook.SheetNames[0]];
-        var rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        /* 使用 header:1 获取数组格式，便于按列位置精确读取 D列和F列 */
+        var rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
         if (!rows.length) { toast('Excel 中未读取到数据'); return; }
 
-        var headerMap = {
-          '合同类型': ['合同类型', '合同 类型'],
-          '工厂名称': ['工厂名称', '工厂 名称', '供应商'],
-          '品类': ['品类', '产品类别', '品名'],
-          '合同开始日': ['合同开始日', '开始日期', '合同开始日期'],
-          '合同到期日': ['合同到期日', '到期日期', '合同到期日期', '结束日期']
-        };
+        var headers = rows[0].map(function (h) { return String(h).trim(); });
 
-        function findCol(row, keys) {
-          for (var i = 0; i < keys.length; i++) {
-            if (row[keys[i]] !== undefined && row[keys[i]] !== '') return row[keys[i]];
+        function findColIdx(keys) {
+          for (var i = 0; i < headers.length; i++) {
+            if (keys.indexOf(headers[i]) >= 0) return i;
           }
-          return '';
+          return -1;
         }
 
+        var idxType = findColIdx(['合同类型', '合同 类型']);
+        var idxFactory = findColIdx(['工厂名称', '工厂 名称', '供应商']);
+        var idxCategory = findColIdx(['品类', '产品类别', '品名']);
+
+        /* 【合同迭代新增】合同开始日参考D列(index 3)，合同到期日参考F列(index 5) */
+        var idxStart = 3;   /* D列 */
+        var idxExpiry = 5;  /* F列 */
+        /* 若表头能匹配到日期列名，优先使用表头位置 */
+        var hIdxStart = findColIdx(['合同开始日', '开始日期', '合同开始日期']);
+        var hIdxExpiry = findColIdx(['合同到期日', '到期日期', '合同到期日期', '结束日期']);
+        if (hIdxStart >= 0) idxStart = hIdxStart;
+        if (hIdxExpiry >= 0) idxExpiry = hIdxExpiry;
+
         function formatDate(val) {
-          if (!val) return '';
-          if (val instanceof Date) return val.toISOString().slice(0, 10);
+          if (!val || val === '') return '';
+          if (val instanceof Date) {
+            var y = val.getFullYear();
+            var m = String(val.getMonth() + 1).padStart(2, '0');
+            var d = String(val.getDate()).padStart(2, '0');
+            return y + '-' + m + '-' + d;
+          }
           var s = String(val).trim();
           if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
           if (/^\d{4}\/\d{1,2}\/\d{1,2}/.test(s)) {
             var parts = s.split(/[\/\s]/);
             return parts[0] + '-' + String(parts[1]).padStart(2, '0') + '-' + String(parts[2]).padStart(2, '0');
           }
-          var d = new Date(s);
-          if (!isNaN(d)) return d.toISOString().slice(0, 10);
+          /* 【合同迭代新增】处理 Excel 日期序列号（如 46112 → 2026-03-01） */
+          if (/^\d+\.?\d*$/.test(s)) {
+            var serial = parseFloat(s);
+            if (serial > 30000 && serial < 70000) {
+              var epoch = new Date(1899, 11, 30);
+              var dt = new Date(epoch.getTime() + Math.round(serial) * 86400000);
+              var y2 = dt.getFullYear();
+              var m2 = String(dt.getMonth() + 1).padStart(2, '0');
+              var d2 = String(dt.getDate()).padStart(2, '0');
+              return y2 + '-' + m2 + '-' + d2;
+            }
+          }
+          var d3 = new Date(s);
+          if (!isNaN(d3)) return d3.toISOString().slice(0, 10);
           return s;
         }
 
+        function getCell(row, idx) {
+          if (idx < 0 || idx >= row.length) return '';
+          var v = row[idx];
+          return v === undefined || v === null ? '' : v;
+        }
+
         var newContracts = [];
-        var addedSuppliers = [];
-        rows.forEach(function (row) {
-          var factory = String(findCol(row, headerMap['工厂名称'])).trim();
-          if (!factory) return;
+        for (var r = 1; r < rows.length; r++) {
+          var row = rows[r];
+          /* 跳过全空行 */
+          var hasData = false;
+          for (var c = 0; c < row.length; c++) { if (row[c] !== '') { hasData = true; break; } }
+          if (!hasData) continue;
+          var factory = String(getCell(row, idxFactory >= 0 ? idxFactory : 1)).trim();
+          if (!factory) continue;
           var contract = {
-            contractType: String(findCol(row, headerMap['合同类型'])).trim(),
+            contractType: String(getCell(row, idxType >= 0 ? idxType : 0)).trim(),
             factory: factory,
-            category: String(findCol(row, headerMap['品类'])).trim(),
-            startDate: formatDate(findCol(row, headerMap['合同开始日'])),
-            expiryDate: formatDate(findCol(row, headerMap['合同到期日']))
+            category: String(getCell(row, idxCategory >= 0 ? idxCategory : 2)).trim(),
+            startDate: formatDate(getCell(row, idxStart)),
+            expiryDate: formatDate(getCell(row, idxExpiry))
           };
           newContracts.push(contract);
-          if (ensureContractSupplier(factory)) addedSuppliers.push(factory);
-        });
-
-        state.contracts = newContracts;
-        saveState();
-        renderContractExpiry();
-        renderFactoryCards();
-        renderFactoryInventoryPanel();
-        renderSelects();
-        var msg = '已导入 ' + newContracts.length + ' 份合同记录';
-        if (addedSuppliers.length) {
-          msg += '；自动新增供应商 ' + addedSuppliers.length + ' 家：' + addedSuppliers.join('、');
         }
-        toast(msg);
+
+        if (!newContracts.length) { toast('未识别到有效的合同数据'); return; }
+
+        /* 【合同迭代新增】显示预览，等待用户确认后才入库 */
+        pendingContracts = newContracts;
+        showContractPreview(newContracts);
       } catch (err) {
         toast('解析 Excel 失败：' + err.message);
       }
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  /* 【合同迭代新增】合同智能识别预览渲染 */
+  function showContractPreview(contracts) {
+    var area = $('contractPreviewArea');
+    var tableEl = $('contractPreviewTable');
+    if (!area || !tableEl) return;
+
+    var rowsHtml = contracts.map(function (c, i) {
+      return '<tr>' +
+        '<td style="text-align:center;">' + (i + 1) + '</td>' +
+        '<td>' + escapeHTML(c.contractType) + '</td>' +
+        '<td>' + escapeHTML(c.factory) + '</td>' +
+        '<td>' + escapeHTML(c.category) + '</td>' +
+        '<td><strong>' + escapeHTML(c.startDate) + '</strong></td>' +
+        '<td><strong>' + escapeHTML(c.expiryDate) + '</strong></td>' +
+      '</tr>';
+    }).join('');
+
+    tableEl.innerHTML =
+      '<div class="table-wrap"><table><thead><tr>' +
+      '<th>#</th><th>合同类型</th><th>工厂名称</th><th>品类</th><th>合同开始日（D列）</th><th>合同到期日（F列）</th>' +
+      '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
+      '<p style="margin:8px 0 0;font-size:13px;color:var(--muted);">共识别 ' + contracts.length + ' 条记录，请核对无误后点击「确认上传」</p>';
+
+    area.style.display = 'block';
+    area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    toast('已识别 ' + contracts.length + ' 条合同，请确认后上传');
   }
 
   function ensureContractSupplier(name) {

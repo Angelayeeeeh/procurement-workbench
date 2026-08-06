@@ -2158,7 +2158,7 @@
         <h1>Angela的独家定制</h1>
         <p>机油、雨刷、车衣、蓄电池、防冻液等汽车后市场产品</p>
       </div>
-      <nav class="nav" id="nav"><button data-nav="home" class="active"><span>首页・今日总览</span><small>5</small></button><button data-nav="suppliers" class=""><span>供应商管理</span><small>0</small></button><button data-nav="orders" class=""><span>采购订单 &amp; 跟进</span><small>0</small></button><button data-nav="smartEmail" class=""><span>智能邮箱</span><small>0</small></button><button data-nav="finance" class=""><span>付款 &amp; 发票管理</span><small>1</small></button><button data-nav="reconciliation" class=""><span>工厂月结对账</span><small>0</small></button><button data-nav="antifake" class=""><span>防伪标管理</span><small>0</small></button><button data-nav="contracts" class=""><span>合同管理</span><small>1</small></button><button data-nav="weekly" class=""><span>周报管理</span><small>5</small></button><button data-nav="projects" class=""><span>项目专项跟进</span><small>2</small></button></nav>
+      <nav class="nav" id="nav"><button data-nav="home" class="active"><span>首页・今日总览</span><small>5</small></button><button data-nav="suppliers" class=""><span>供应商管理</span><small>0</small></button><button data-nav="orders" class=""><span>采购订单 &amp; 跟进</span><small>0</small></button><button data-nav="smartEmail" class=""><span>智能邮箱</span><small>0</small></button><button data-nav="finance" class=""><span>付款 &amp; 发票管理</span><small>1</small></button><button data-nav="reconciliation" class=""><span>工厂月结对账</span><small>0</small></button><button data-nav="antifake" class=""><span>防伪标管理</span><small>0</small></button><button data-nav="weekly" class=""><span>周报管理</span><small>5</small></button><button data-nav="projects" class=""><span>项目专项跟进</span><small>2</small></button></nav>
     </aside>
 
     <main class="main">
@@ -2292,6 +2292,7 @@
         <div class="subnav" id="supplierSubnav">
           <button class="active" type="button" data-supplier-tab="profile">供应商档案</button>
           <button type="button" data-supplier-tab="inventory" class="">工厂库存管理</button>
+          <button type="button" data-supplier-tab="contracts">合同管理</button>
         </div>
         <div id="supplierProfilePanel" style="display: block;">
           <div class="grid cols-3" id="factoryCards"><div class="factory-card " data-factory-card="莱克"><div><h4>莱克</h4><p>主营：机油、防冻液 · 对接人：未填写</p><p>未完成 2 项 · 总记录 2 项</p><p>跟进莱克机油 T7/T9 生产进度，确认预计发货节点。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn danger factory-delete-btn" data-delete-factory="莱克" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div><div class="factory-card " data-factory-card="纯发"><div><h4>纯发</h4><p>主营：雨刷 · 对接人：未填写</p><p>未完成 1 项 · 总记录 1 项</p><p>跟进纯发雨刷 LOGO 改版确认和旧版处理方式。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn danger factory-delete-btn" data-delete-factory="纯发" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div><div class="factory-card " data-factory-card="纳科达"><div><h4>纳科达</h4><p>主营：供应商合同 / 成品采购 · 对接人：未填写</p><p>未完成 1 项 · 总记录 1 项</p><p>整理纳科达合同续签条款沟通进度。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn danger factory-delete-btn" data-delete-factory="纳科达" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div><div class="factory-card " data-factory-card="汇财"><div><h4>汇财</h4><p>主营：成品采购 · 对接人：未填写</p><p>未完成 0 项 · 总记录 0 项</p><p>暂无历史沟通记录</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status done">正常</span><button class="btn danger factory-delete-btn" data-delete-factory="汇财" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div><div class="factory-card " data-factory-card="和润宇"><div><h4>和润宇</h4><p>主营：成品采购 · 对接人：未填写</p><p>未完成 0 项 · 总记录 0 项</p><p>暂无历史沟通记录</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status done">正常</span><button class="btn danger factory-delete-btn" data-delete-factory="和润宇" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div><div class="factory-card " data-factory-card="小松"><div><h4>小松</h4><p>主营：票据与采购事项 · 对接人：未填写</p><p>未完成 1 项 · 总记录 1 项</p><p>记录小松发票单位转换事项，跟进发票状态。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn danger factory-delete-btn" data-delete-factory="小松" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div></div>
@@ -2326,6 +2327,41 @@
               <span id="factoryInventorySummary">选择工厂卡片后进入该工厂专属库存管理页面</span>
             </div>
             <div class="card-body" id="factoryInventoryBody"><div class="pill-row" style="margin-bottom:12px;"><span class="pill">点击工厂卡片进入库存</span><span class="pill">按 GY 号统计库存</span><span class="pill">扣减后自动保存</span></div><div class="grid cols-3"><div class="factory-card" data-inventory-factory-card="莱克"><div><h4>莱克</h4><p>主营：机油、防冻液</p><p>库存型号 0 个 · 当前库存总数 0</p><p>暂无库存流水</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><a class="btn primary" href="./laike-inventory-dashboard/laike-inventory-dashboard.html" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px;padding:6px 10px;min-height:auto;">莱克专属库存</a><span class="status pending">暂无库存</span></div></div><div class="factory-card" data-inventory-factory-card="纯发"><div><h4>纯发</h4><p>主营：雨刷</p><p>库存型号 0 个 · 当前库存总数 0</p><p>暂无库存流水</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">暂无库存</span></div></div><div class="factory-card" data-inventory-factory-card="纳科达"><div><h4>纳科达</h4><p>主营：供应商合同 / 成品采购</p><p>库存型号 0 个 · 当前库存总数 0</p><p>暂无库存流水</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">暂无库存</span></div></div><div class="factory-card" data-inventory-factory-card="汇财"><div><h4>汇财</h4><p>主营：成品采购</p><p>库存型号 0 个 · 当前库存总数 0</p><p>暂无库存流水</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">暂无库存</span></div></div><div class="factory-card" data-inventory-factory-card="和润宇"><div><h4>和润宇</h4><p>主营：成品采购</p><p>库存型号 0 个 · 当前库存总数 0</p><p>暂无库存流水</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">暂无库存</span></div></div><div class="factory-card" data-inventory-factory-card="小松"><div><h4>小松</h4><p>主营：票据与采购事项</p><p>库存型号 0 个 · 当前库存总数 0</p><p>暂无库存流水</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">暂无库存</span></div></div></div></div>
+          </div>
+        </div>
+        <div id="supplierContractsPanel" style="display: none;">
+          <!-- 【合同迭代新增】合同时效管理卡片 -->
+          <div class="card" style="margin-bottom:14px;">
+            <div class="card-header">
+              <h3>合同时效管理</h3>
+              <span>合同到期前 2 个月自动预警，提示提前准备续签</span>
+            </div>
+            <div class="card-body">
+              <div class="pill-row" style="margin-bottom:14px;">
+                <button class="btn primary" id="contractUploadBtn" type="button">上传合同 Excel</button>
+                <button class="btn" id="contractAddSupplierBtn" type="button">添加供应商</button>
+                <input type="file" id="contractFileInput" accept=".xlsx,.xls" style="display:none;">
+              </div>
+              <div id="contractExpiryStats" style="margin-bottom:14px;"></div>
+              <div id="contractExpiryTable"></div>
+              <!-- 【合同迭代新增】智能识别预览与确认区域 -->
+              <div id="contractPreviewArea" style="display:none;margin-top:16px;border:1px solid var(--rule);border-radius:var(--radius-sm);padding:16px;background:var(--accent-soft);">
+                <h4 style="margin:0 0 10px;font-size:15px;color:var(--accent-dark);">智能识别结果预览（请确认后再上传）</h4>
+                <div id="contractPreviewTable" style="margin-bottom:12px;"></div>
+                <div class="pill-row">
+                  <button class="btn primary" id="contractConfirmBtn" type="button">确认上传</button>
+                  <button class="btn" id="contractCancelBtn" type="button">取消</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- 原有合同工作记录表（保持不变） -->
+          <div class="card">
+            <div class="card-header">
+              <h3>合同管理</h3>
+              <span>合同续签、条款沟通、寄件进度、归档</span>
+            </div>
+            <div class="card-body" id="contractTable"><div class="table-wrap"><table><thead><tr><th>状态</th><th>工作内容 / 下一步</th><th>工厂</th><th>订单号</th><th>产品 / 事项</th><th>模块</th><th>时间节点</th><th>物流单号</th><th>金额 / 数量</th><th>更新时间</th><th>操作</th></tr></thead><tbody><tr><td><span class="status pending">待跟进</span></td><td><strong>整理纳科达合同续签条款沟通进度。</strong><div class="muted">补充条款确认记录。</div></td><td>纳科达</td><td></td><td>合同续签</td><td>合同管理</td><td>2026-08-10（星期一）</td><td></td><td></td><td><span class="mono">2026-08-05 22:03</span></td><td><div class="record-actions"><button data-action="done" data-id="Rmsg5qwzhQIYRT">完成</button><button data-action="edit" data-id="Rmsg5qwzhQIYRT">编辑</button><button data-action="delete" data-id="Rmsg5qwzhQIYRT">删除</button></div></td></tr></tbody></table></div></div>
           </div>
         </div>
       </section>
@@ -2759,33 +2795,6 @@
             <iframe class="antifake-query-frame" src="./anti_fake_query.html" title="防伪标查询系统"></iframe>
           </div>
         </div>
-        </div>
-      </section>
-
-      <section class="section" data-section="contracts">
-        <!-- 【合同迭代新增】合同时效管理卡片 -->
-        <div class="card" style="margin-bottom:14px;">
-          <div class="card-header">
-            <h3>合同时效管理</h3>
-            <span>合同到期前 2 个月自动预警，提示提前准备续签</span>
-          </div>
-          <div class="card-body">
-            <div class="pill-row" style="margin-bottom:14px;">
-              <button class="btn primary" id="contractUploadBtn" type="button">上传合同 Excel</button>
-              <button class="btn" id="contractAddSupplierBtn" type="button">添加供应商</button>
-              <input type="file" id="contractFileInput" accept=".xlsx,.xls" style="display:none;">
-            </div>
-            <div id="contractExpiryStats" style="margin-bottom:14px;"></div>
-            <div id="contractExpiryTable"></div>
-          </div>
-        </div>
-        <!-- 原有合同工作记录表（保持不变） -->
-        <div class="card">
-          <div class="card-header">
-            <h3>合同管理</h3>
-            <span>合同续签、条款沟通、寄件进度、归档</span>
-          </div>
-          <div class="card-body" id="contractTable"><div class="table-wrap"><table><thead><tr><th>状态</th><th>工作内容 / 下一步</th><th>工厂</th><th>订单号</th><th>产品 / 事项</th><th>模块</th><th>时间节点</th><th>物流单号</th><th>金额 / 数量</th><th>更新时间</th><th>操作</th></tr></thead><tbody><tr><td><span class="status pending">待跟进</span></td><td><strong>整理纳科达合同续签条款沟通进度。</strong><div class="muted">补充条款确认记录。</div></td><td>纳科达</td><td></td><td>合同续签</td><td>合同管理</td><td>2026-08-10（星期一）</td><td></td><td></td><td><span class="mono">2026-08-05 22:03</span></td><td><div class="record-actions"><button data-action="done" data-id="Rmsg5qwzhQIYRT">完成</button><button data-action="edit" data-id="Rmsg5qwzhQIYRT">编辑</button><button data-action="delete" data-id="Rmsg5qwzhQIYRT">删除</button></div></td></tr></tbody></table></div></div>
         </div>
       </section>
 
