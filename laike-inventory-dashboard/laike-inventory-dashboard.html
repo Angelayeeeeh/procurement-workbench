@@ -123,16 +123,16 @@
     .progress {
       height: 8px;
       width: 84px;
-      background: rgba(138,138,138,.18);
+      background: #E8F0ED;
       border-radius: 999px;
       overflow: hidden;
       display: inline-block;
       vertical-align: middle;
       flex: 0 0 84px;
     }
-    .bar { height: 100%; width: 0; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 999px; transition: width .25s ease; }
-    .bar.done { background: var(--good); }
-    .bar.over { background: var(--bad); }
+    .bar { height: 100%; width: 0; background: linear-gradient(90deg, #238B7E 0%, #2A9D8F 50%, #3DBCB0 100%); border-radius: 999px; transition: width .35s ease; box-shadow: 0 0 4px rgba(42,157,143,0.3); }
+    .bar.done { background: linear-gradient(90deg, #238B7E 0%, #2A9D8F 50%, #3DBCB0 100%); }
+    .bar.over { background: linear-gradient(90deg, #E76F51 0%, #F4A261 100%); }
     .progress-text { min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
     .note { border-left: 4px solid var(--accent2); }
     .empty { color: var(--muted); text-align: center; }
