@@ -30,32 +30,34 @@
     }
 
     :root {
-      --bg: #FAF5F0;
-      --bg2: #F5F0E8;
+      --bg: #F0F5F3;
+      --bg2: #E8F0ED;
       --panel: #FFFFFF;
-      --ink: #2D3436;
-      --muted: #8A8A8A;
-      --rule: #E8E4DE;
-      --accent: #E07A5F;
+      --ink: #1A1A1A;
+      --muted: #6B7280;
+      --rule: #E5E7EB;
+      --accent: #2A9D8F;
       --accent2: #F4A261;
-      --accent-dark: #C95F44;
-      --accent-soft: rgba(224, 122, 95, 0.10);
+      --accent-dark: #238B7E;
+      --accent-soft: rgba(42, 157, 143, 0.10);
       --purple: #9B8AF4;
       --blue: #5B9BD5;
-      --danger: #E07A5F;
+      --danger: #E76F51;
       --danger-bg: #FDF0ED;
       --warning: #E8A838;
       --warning-bg: #FFF8EC;
       --success: #4CAF50;
       --success-bg: rgba(76, 175, 80, 0.12);
-      --info-bg: rgba(224, 122, 95, 0.08);
-      --shadow: 0 4px 20px rgba(224, 122, 95, 0.06);
+      --info-bg: rgba(42, 157, 143, 0.08);
+      --shadow: 0 4px 20px rgba(42, 157, 143, 0.06);
       --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.04);
       --glass: #FFFFFF;
       --glass-strong: #FFFFFF;
       --radius: 16px;
       --radius-sm: 10px;
-      --line: #E8E4DE;
+      --line: #E5E7EB;
+  --text: #1A1A1A;
+  --good: #4CAF50;
     }
 
     * {
@@ -146,7 +148,7 @@
     .nav button.active {
       background: var(--accent-soft);
       color: var(--accent);
-      border-color: rgba(224, 122, 95, 0.20);
+      border-color: rgba(42, 157, 143, 0.20);
     }
 
     .nav small {
@@ -154,7 +156,7 @@
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
       background: var(--accent-soft);
-      border: 1px solid rgba(224, 122, 95, 0.15);
+      border: 1px solid rgba(42, 157, 143, 0.15);
       padding: 1px 6px;
       border-radius: 999px;
     }
@@ -280,7 +282,7 @@
     .btn.danger {
       background: #FFF0EE;
       color: var(--danger);
-      border-color: rgba(224, 122, 95, 0.20);
+      border-color: rgba(42, 157, 143, 0.20);
     }
 
     .grid {
@@ -316,7 +318,7 @@
 
     .clickable-card:hover {
       border-color: var(--accent);
-      box-shadow: 0 4px 16px rgba(224, 122, 95, 0.10);
+      box-shadow: 0 4px 16px rgba(42, 157, 143, 0.10);
       transform: translateY(-1px);
     }
 
@@ -467,7 +469,7 @@
     .po-upload-box.pdf.drag-over {
       border-color: var(--accent);
       background: var(--accent-soft);
-      box-shadow: 0 0 0 3px rgba(224, 122, 95, 0.08);
+      box-shadow: 0 0 0 3px rgba(42, 157, 143, 0.08);
     }
 
     .po-backup-notice {
@@ -673,7 +675,7 @@
     .factory-card:hover,
     .factory-card.active {
       border-color: var(--accent);
-      box-shadow: 0 4px 16px rgba(224, 122, 95, 0.10);
+      box-shadow: 0 4px 16px rgba(42, 157, 143, 0.10);
       transform: translateY(-1px);
     }
 
@@ -724,7 +726,7 @@
 
     .stock-card:hover {
       border-color: var(--accent);
-      box-shadow: 0 4px 16px rgba(224, 122, 95, 0.10);
+      box-shadow: 0 4px 16px rgba(42, 157, 143, 0.10);
       transform: translateY(-1px);
     }
 
@@ -736,7 +738,7 @@
     .stock-card.low {
       background: #FFF5F4;
       border-color: var(--danger);
-      box-shadow: 0 0 0 1px rgba(224, 122, 95, 0.10);
+      box-shadow: 0 0 0 1px rgba(42, 157, 143, 0.10);
     }
 
     .stock-card h4 {
@@ -801,7 +803,7 @@
     .stock-card.low .stock-light {
       color: var(--danger);
       background: #FFF0EE;
-      border-color: rgba(224, 122, 95, 0.22);
+      border-color: rgba(42, 157, 143, 0.22);
     }
 
     .threshold-field {
@@ -946,8 +948,8 @@
       text-align: center;
     }
     .antifake-chart-stat.primary {
-      background: linear-gradient(135deg, rgba(224, 122, 95,0.08), rgba(244,162,97,0.06));
-      border-color: rgba(224, 122, 95,0.18);
+      background: linear-gradient(135deg, rgba(42, 157, 143, 0.08), rgba(244,162,97,0.06));
+      border-color: rgba(42, 157, 143, 0.18);
     }
     .antifake-chart-stat .stat-label {
       font-size: 12px;
@@ -990,12 +992,12 @@
     .antifake-chart-card.alert {
       border-color: var(--danger);
       background: #FFF5F4;
-      box-shadow: 0 0 0 1px rgba(224, 122, 95,0.12);
+      box-shadow: 0 0 0 1px rgba(42, 157, 143, 0.12);
       animation: antifakePulse 2s ease-in-out infinite;
     }
     @keyframes antifakePulse {
-      0%, 100% { box-shadow: 0 0 0 1px rgba(224, 122, 95,0.12); }
-      50% { box-shadow: 0 0 0 4px rgba(224, 122, 95,0.18); }
+      0%, 100% { box-shadow: 0 0 0 1px rgba(42, 157, 143, 0.12); }
+      50% { box-shadow: 0 0 0 4px rgba(42, 157, 143, 0.18); }
     }
     .antifake-chart-card h4 {
       margin: 0 0 10px;
@@ -1210,7 +1212,7 @@
 
     .overview-card.warning {
       background: #FFFFFF;
-      border-color: rgba(224, 122, 95, 0.30);
+      border-color: rgba(42, 157, 143, 0.30);
       border-left: 3px solid var(--accent);
     }
 
@@ -1999,7 +2001,7 @@
       text-align: center;
       padding: 6px 10px;
       border-radius: 10px;
-      background: linear-gradient(135deg, rgba(91,155,213,0.06), rgba(224, 122, 95,0.04));
+      background: linear-gradient(135deg, rgba(91,155,213,0.06), rgba(42, 157, 143, 0.04));
       border: 1px solid rgba(91,155,213,0.1);
     }
     .angela-greeting-icon { font-size: 14px; vertical-align: middle; }
@@ -2012,7 +2014,7 @@
     .angela-calendar-card .angela-calendar {
       border-radius: 10px;
       overflow: hidden;
-      border: 1px solid rgba(224, 122, 95,0.08);
+      border: 1px solid rgba(42, 157, 143, 0.08);
     }
     .angela-cal-header {
       display: flex;
@@ -2020,7 +2022,7 @@
       justify-content: center;
       gap: 8px;
       padding: 5px 8px;
-      background: rgba(224, 122, 95,0.04);
+      background: rgba(42, 157, 143, 0.04);
       font-size: 11px;
       font-weight: 700;
       color: #666;
@@ -2029,7 +2031,7 @@
       display: grid;
       grid-template-columns: repeat(7, 1fr);
       gap: 1px;
-      background: rgba(224, 122, 95,0.06);
+      background: rgba(42, 157, 143, 0.06);
     }
     .angela-cal-dow {
       text-align: center;
@@ -2081,7 +2083,7 @@
     }
     .angela-birthday-alert.show { display: block; }
     .angela-birthday-alert.today {
-      background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(224, 122, 95,0.06));
+      background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(42, 157, 143, 0.06));
       border: 1px solid rgba(255,180,0,0.2);
       color: #B8860B;
     }
@@ -2115,9 +2117,9 @@
     .angela-bday-popup.closing .angela-bday-mask { background: rgba(0,0,0,0); }
     .angela-bday-head {
       padding: 14px 20px 10px;
-      background: linear-gradient(135deg, rgba(224, 122, 95,0.06), rgba(244,162,97,0.04));
+      background: linear-gradient(135deg, rgba(42, 157, 143, 0.06), rgba(244,162,97,0.04));
       display: flex; justify-content: space-between; align-items: center;
-      border-bottom: 1px solid rgba(224, 122, 95,0.08);
+      border-bottom: 1px solid rgba(42, 157, 143, 0.08);
     }
     .angela-bday-head h3 { margin: 0; font-size: 15px; font-weight: 800; color: #333; }
     .angela-bday-close {
@@ -2141,9 +2143,9 @@
       padding: 8px 28px; border: none; border-radius: 20px;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       color: #fff; font-size: 13px; font-weight: 700; cursor: pointer;
-      box-shadow: 0 4px 12px rgba(224, 122, 95,0.2); transition: all .2s ease;
+      box-shadow: 0 4px 12px rgba(42, 157, 143, 0.2); transition: all .2s ease;
     }
-    .angela-bday-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(224, 122, 95,0.3); }
+    .angela-bday-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(42, 157, 143, 0.3); }
 
     @media (max-width: 768px) {
       .angela-sticker-item svg { width: 48px; height: 48px; }

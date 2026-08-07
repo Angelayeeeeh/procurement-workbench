@@ -124,7 +124,7 @@
     '<svg width="56" height="56" viewBox="0 0 60 60">' +
       '<ellipse cx="20" cy="8" rx="5" ry="12" fill="#B8D8F0" transform="rotate(-15 20 8)"/>' +
       '<ellipse cx="40" cy="8" rx="5" ry="12" fill="#B8D8F0" transform="rotate(15 40 8)"/>' +
-      '<circle cx="30" cy="32" r="18" fill="#FFF8F0" stroke="#E8E4DE" stroke-width="1"/>' +
+      '<circle cx="30" cy="32" r="18" fill="#FFF8F0" stroke="#E5E7EB" stroke-width="1"/>' +
       '<circle cx="24" cy="30" r="2" fill="#5B9BD5"/>' +
       '<circle cx="36" cy="30" r="2" fill="#5B9BD5"/>' +
       '<ellipse cx="30" cy="35" rx="2.5" ry="2" fill="#F4A261"/>' +

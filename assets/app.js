@@ -1945,7 +1945,7 @@
       return { factory: factory, qty: qty, threshold: threshold, sentTotal: sentTotal, deductedTotal: deductedTotal, isLow: isLow };
     });
     var summaryHtml = '<div class="antifake-stock-summary" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px;">' +
-      '<div style="padding:14px 20px;border-radius:var(--radius);background:var(--accent-soft);border:1px solid rgba(224,122,95,0.18);">' +
+      '<div style="padding:14px 20px;border-radius:var(--radius);background:var(--accent-soft);border:1px solid rgba(42, 157, 143, 0.18);">' +
       '<div style="font-size:12px;color:var(--muted);font-weight:700;">防伪标剩余总量</div>' +
       '<div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:800;color:var(--accent);">' + totalRemaining + '</div>' +
       '<div style="font-size:11px;color:var(--muted);font-weight:700;">需寄标工厂 ' + visibleFactories.length + ' 家</div></div>' +
@@ -1957,7 +1957,7 @@
       '<div style="font-size:12px;color:var(--muted);font-weight:700;">累计扣减</div>' +
       '<div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:800;color:var(--accent2);">' + totalDeducted + '</div>' +
       '<div style="font-size:11px;color:var(--muted);font-weight:700;">含订单扣减/损耗/退回</div></div>' +
-      '<div style="padding:14px 20px;border-radius:var(--radius);background:' + (alertCount > 0 ? 'var(--danger-bg)' : 'var(--success-bg)') + ';border:1px solid ' + (alertCount > 0 ? 'rgba(224,122,95,0.22)' : 'rgba(76,175,80,0.20)') + ';">' +
+      '<div style="padding:14px 20px;border-radius:var(--radius);background:' + (alertCount > 0 ? 'var(--danger-bg)' : 'var(--success-bg)') + ';border:1px solid ' + (alertCount > 0 ? 'rgba(42, 157, 143, 0.22)' : 'rgba(76,175,80,0.20)') + ';">' +
       '<div style="font-size:12px;color:var(--muted);font-weight:700;">库存告警</div>' +
       '<div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:800;color:' + (alertCount > 0 ? 'var(--danger)' : 'var(--success)') + ';">' + alertCount + '</div>' +
       '<div style="font-size:11px;color:var(--muted);font-weight:700;">' + (alertCount > 0 ? '家工厂低于阈值' : '全部库存正常') + '</div></div>' +

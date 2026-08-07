@@ -9,19 +9,20 @@
     @font-face { font-family: 'InstrumentSans'; src: url('./_shared/fonts/InstrumentSans-Bold.ttf') format('truetype'); font-weight: 700; }
     @font-face { font-family: 'JetBrainsMono'; src: url('./_shared/fonts/JetBrainsMono-Regular.ttf') format('truetype'); font-weight: 400; }
     :root {
-      --bg: #FAF5F0;
-      --bg2: #F5F0E8;
-      --ink: #2D3436;
-      --muted: #8A8A8A;
-      --rule: #E8E4DE;
-      --accent: #E07A5F;
+      --bg: #F0F5F3;
+      --bg2: #E8F0ED;
+      --ink: #1A1A1A;
+      --muted: #6B7280;
+      --rule: #E5E7EB;
+      --accent: #2A9D8F;
       --accent2: #F4A261;
-      --accent-dark: #C95F44;
-      --accent-soft: rgba(224, 122, 95, 0.10);
+      --accent-dark: #238B7E;
+      --accent-soft: rgba(42, 157, 143, 0.10);
       --good: #4CAF50;
-      --bad: #E07A5F;
+      --bad: #E76F51;
       --surface: #FFFFFF;
       --shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.03);
       --radius: 16px;
       --radius-sm: 10px;
     }
@@ -246,9 +247,9 @@
       font-weight: 700;
       border-radius: var(--radius-sm);
       cursor: pointer;
-      box-shadow: 0 2px 8px rgba(224, 122, 95, .20);
+      box-shadow: 0 2px 8px rgba(42, 157, 143, .20);
     }
-    .btn-primary:hover { transform: translateY(-1px); background: var(--accent-dark); box-shadow: 0 4px 12px rgba(224, 122, 95, .30); }
+    .btn-primary:hover { transform: translateY(-1px); background: var(--accent-dark); box-shadow: 0 4px 12px rgba(42, 157, 143, .30); }
     .update-bar .hint { font-size: 13px; color: var(--muted); }
     @media (max-width: 700px) {
       .upload-grid { grid-template-columns: 1fr; }

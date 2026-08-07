@@ -6,7 +6,7 @@
   var bg2 = style.getPropertyValue('--bg2').trim();
 
   /* 【图表样式优化】统一柔和清爽配色，区分度高 */
-  var palette = ['#5B8DEF', '#37BC9B', '#F4A261', '#A78BFA', '#6EE7B7'];
+  var palette = ['#2A9D8F', '#E8B4B8', '#F4A261', '#6B5B95', '#E9C46A'];
 
   var statusChart = null;
   var categoryChart = null;
