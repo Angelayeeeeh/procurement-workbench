@@ -4370,11 +4370,12 @@
   function detectPurchaseOrderSummaryTotal(rows, map, headerIndex) {
     var totalCol = map && map.totalAmount != null ? map.totalAmount : null;
     var best = 0;
+    var fallbackAmount = 0;
     (rows || []).forEach(function (row, index) {
       if (index <= (headerIndex || 0)) return;
       var cells = (row || []).map(cleanCell);
       var rowText = cells.join(' ');
-      if (!/合计|总计|总金额|金额合计/.test(rowText)) return;
+      if (/订单具体要求|请仔细阅读|以下条款|条款|箱唛按照/.test(rowText)) return;
       var amount = 0;
       if (totalCol != null) amount = parseNumberLike(cells[totalCol]);
       if (!amount) {
@@ -4386,62 +4387,99 @@
           }
         }
       }
-      if (amount) best = amount;
+      // 【修复】优先识别带"合计/总计"文字的汇总行
+      if (/合计|总计|总金额|金额合计/.test(rowText)) {
+        if (amount) best = amount;
+        return;
+      }
+      // 【修复】无"合计"文字时的回退：金额列有值且不含产品明细信息
+      if (amount > 0 && !fallbackAmount) {
+        var hasProductInfo = false;
+        if (map && map.gyModel != null) {
+          var gy = cleanCell(cells[map.gyModel]);
+          if (gy && /GY/i.test(gy)) hasProductInfo = true;
+        }
+        if (map && map.productName != null) {
+          var pn = cleanCell(cells[map.productName]);
+          if (pn && pn.length > 1) hasProductInfo = true;
+        }
+        if (!hasProductInfo) fallbackAmount = amount;
+      }
     });
-    return best;
+    return best || fallbackAmount;
   }
 
   function detectPurchaseOrderSummary(rows, map, headerIndex) {
     var qtyCol = map && map.qty != null ? map.qty : null;
     var totalCol = map && map.totalAmount != null ? map.totalAmount : null;
     var best = { qty: 0, amount: 0, line: '' };
+    var bestFallback = { qty: 0, amount: 0, line: '' };
     (rows || []).forEach(function (row, index) {
       if (index <= (headerIndex || 0)) return;
       var cells = (row || []).map(cleanCell);
       var rowText = cells.join(' ');
-      // 只认底部合计/总计行；遇到订单具体要求和条款区时不再解析后续文字内容。
+      // 遇到订单具体要求和条款区时不再解析后续文字内容。
       if (/订单具体要求|请仔细阅读|以下条款|条款|箱唛按照/.test(rowText)) return;
-      if (!/合计|总计/.test(rowText)) return;
+
       var qty = qtyCol != null ? parseNumberLike(cells[qtyCol]) : 0;
       var amount = totalCol != null ? parseNumberLike(cells[totalCol]) : 0;
 
-      if (!amount) {
-        for (var i = cells.length - 1; i >= 0; i--) {
-          if (!cells[i]) continue;
-          if (/[￥¥元]|\d/.test(cells[i])) {
-            var amountCandidate = parseNumberLike(cells[i]);
-            if (amountCandidate) {
-              amount = amountCandidate;
+      // 【修复】优先识别带"合计/总计"文字的汇总行
+      if (/合计|总计/.test(rowText)) {
+        if (!amount) {
+          for (var i = cells.length - 1; i >= 0; i--) {
+            if (!cells[i]) continue;
+            if (/[￥¥元]|\d/.test(cells[i])) {
+              var amountCandidate = parseNumberLike(cells[i]);
+              if (amountCandidate) {
+                amount = amountCandidate;
+                break;
+              }
+            }
+          }
+        }
+        if (!qty) {
+          var beforeAmountCells = amount && amount.toString ? cells.slice(0) : cells;
+          if (amount) {
+            var amountIndex = -1;
+            for (var a = cells.length - 1; a >= 0; a--) {
+              if (parseNumberLike(cells[a]) === amount) {
+                amountIndex = a;
+                break;
+              }
+            }
+            beforeAmountCells = amountIndex >= 0 ? cells.slice(0, amountIndex) : cells;
+          }
+          for (var q = beforeAmountCells.length - 1; q >= 0; q--) {
+            var qtyCandidate = parseNumberLike(beforeAmountCells[q]);
+            if (qtyCandidate && qtyCandidate !== amount) {
+              qty = qtyCandidate;
               break;
             }
           }
         }
+        if (qty || amount) best = { qty: qty, amount: amount, line: rowText };
+        return;
       }
 
-      if (!qty) {
-        var beforeAmountCells = amount && amount.toString ? cells.slice(0) : cells;
-        if (amount) {
-          var amountIndex = -1;
-          for (var a = cells.length - 1; a >= 0; a--) {
-            if (parseNumberLike(cells[a]) === amount) {
-              amountIndex = a;
-              break;
-            }
-          }
-          beforeAmountCells = amountIndex >= 0 ? cells.slice(0, amountIndex) : cells;
+      // 【修复】无"合计"文字时的回退：如果某行在数量列和金额列同时有数值，且不含产品明细信息，视为汇总行
+      if (qty > 0 && amount > 0 && (!bestFallback.qty || !bestFallback.amount)) {
+        var hasProductInfo = false;
+        if (map && map.gyModel != null) {
+          var gy = cleanCell(cells[map.gyModel]);
+          if (gy && /GY/i.test(gy)) hasProductInfo = true;
         }
-        for (var q = beforeAmountCells.length - 1; q >= 0; q--) {
-          var qtyCandidate = parseNumberLike(beforeAmountCells[q]);
-          if (qtyCandidate && qtyCandidate !== amount) {
-            qty = qtyCandidate;
-            break;
-          }
+        if (map && map.productName != null) {
+          var pn = cleanCell(cells[map.productName]);
+          if (pn && pn.length > 1) hasProductInfo = true;
+        }
+        if (!hasProductInfo) {
+          bestFallback = { qty: qty, amount: amount, line: rowText };
         }
       }
-
-      if (qty || amount) best = { qty: qty, amount: amount, line: rowText };
     });
-    return best;
+    // 优先返回带"合计"文字的汇总行，否则返回回退结果
+    return (best.qty || best.amount) ? best : bestFallback;
   }
 
   function parseDateText(value) {
@@ -4457,6 +4495,25 @@
     // 【增量变更】兼容 yyyy/m/d 斜杠日期格式（例：2026/6/20），同时兼容带时间后缀和 Date.toString() 格式
     var m = text.match(/(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/);
     if (m) return m[1] + '-' + pad(Number(m[2])) + '-' + pad(Number(m[3]));
+    // 【修复】兼容 M/D/YY、M/D/YYYY、YY/M/D、YYYY/MM/DD 等短日期格式
+    // SheetJS raw:false 会将日期格式化为如 "7/20/26"、"26/7/20"、"2026/07/20" 等
+    var shortDate = text.match(/^(\d{1,4})[\/\-.](\d{1,2})[\/\-.](\d{1,4})$/);
+    if (shortDate) {
+      var p1 = Number(shortDate[1]), p2 = Number(shortDate[2]), p3 = Number(shortDate[3]);
+      // 情况1：YYYY/M/D 或 YYYY/MM/DD（第一位是4位数年份）
+      if (shortDate[1].length === 4 && p2 >= 1 && p2 <= 12 && p3 >= 1 && p3 <= 31) {
+        return p1 + '-' + pad(p2) + '-' + pad(p3);
+      }
+      // 情况2：M/D/YY 或 M/D/YYYY（最后一位是年份，第一位<=12为月份）
+      if (p1 >= 1 && p1 <= 12 && p2 >= 1 && p2 <= 31 && (shortDate[3].length === 2 || shortDate[3].length === 4)) {
+        var y2 = p3; if (y2 < 100) y2 += 2000;
+        return y2 + '-' + pad(p1) + '-' + pad(p2);
+      }
+      // 情况3：YY/M/D（第一位是2位数年份，第一位>12说明不是月份）
+      if (shortDate[1].length === 2 && p1 > 12 && p2 >= 1 && p2 <= 12 && p3 >= 1 && p3 <= 31) {
+        return (p1 + 2000) + '-' + pad(p2) + '-' + pad(p3);
+      }
+    }
     // 兼容 Date.toString() 输出格式（如 "Sat Jun 20 2026 00:00:00 GMT+0800"）
     var monthMap = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
     var dm = text.match(/\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{4})/);
@@ -4645,7 +4702,11 @@
         }
         // 【增量变更】将初始比例存入预览状态
         previewAntifakeRatio = ratio;
+        // 【修复】合计数量为0时，从明细行累加作为回退（与实际扣减逻辑一致）
         var totalQty = Number(single.qty || 0);
+        if (!totalQty) {
+          (single.items || []).forEach(function (item) { totalQty += Number(item.qty || 0); });
+        }
         var deduction = ratio && totalQty ? Math.ceil(totalQty * ratio) : 0;
         var currentStock = factory ? Number(state.antifakeStock[factory] || 0) : 0;
         var afterStock = currentStock - deduction;
@@ -4727,6 +4788,12 @@
         previewAntifakeRatio = parsed;
         updateAntifakePreviewCalc();
       });
+    }
+    // 【修复】合计数量输入框编辑时，实时联动防伪标扣减预览
+    var previewQtyInput = el.querySelector('[data-po-field="qty"]');
+    if (previewQtyInput) {
+      previewQtyInput.addEventListener('input', updateAntifakePreviewCalc);
+      previewQtyInput.addEventListener('change', updateAntifakePreviewCalc);
     }
   }
 
@@ -5657,7 +5724,13 @@
     var single = parsed.singleOrder;
     var factory = single.supplier || '';
     var ratio = previewAntifakeRatio;
-    var totalQty = Number(single.qty || 0);
+    // 【修复】优先读取底部汇总输入框的实时编辑值，其次 single.qty，最后从明细行累加
+    var qtyInput = document.querySelector('[data-po-field="qty"]');
+    var totalQty = qtyInput ? Number(qtyInput.value || 0) : 0;
+    if (!totalQty) totalQty = Number(single.qty || 0);
+    if (!totalQty) {
+      (single.items || []).forEach(function (item) { totalQty += Number(item.qty || 0); });
+    }
     var deduction = ratio && totalQty ? Math.ceil(totalQty * ratio) : 0;
     var currentStock = factory ? Number(state.antifakeStock[factory] || 0) : 0;
     var afterStock = currentStock - deduction;
