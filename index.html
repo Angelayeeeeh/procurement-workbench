@@ -3,7 +3,7 @@
 <html lang="zh-CN"><head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Angela OF采购工作台</title>
+  <title>Angela的独家定制</title>
   <style>
     @font-face {
       font-family: 'Instrument Sans';
@@ -30,8 +30,8 @@
     }
 
     :root {
-      --bg: #F0F5F3;
-      --bg2: #E8F0ED;
+      --bg: #FDF2F3;
+      --bg2: #F9E6E8;
       --panel: #FFFFFF;
       --ink: #1A1A1A;
       --muted: #6B7280;
@@ -251,20 +251,21 @@
 
     .btn {
       min-height: 36px;
-      padding: 8px 14px;
-      border-radius: var(--radius-sm);
-      background: #FFFFFF;
-      color: var(--ink);
-      border: 1px solid var(--rule);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
-      transition: background .16s ease, border-color .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
+      padding: 8px 18px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #FFFFFF;
+      border: 1px solid var(--accent);
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(42, 157, 143, 0.15);
+      transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
     }
 
     .btn:hover {
-      background: #FAF7F2;
-      border-color: var(--accent);
+      background: var(--accent-dark);
+      border-color: var(--accent-dark);
       transform: translateY(-1px);
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+      box-shadow: 0 4px 12px rgba(42, 157, 143, 0.25);
     }
 
     .btn.primary {
@@ -280,9 +281,15 @@
     }
 
     .btn.danger {
-      background: #FFF0EE;
-      color: var(--danger);
-      border-color: rgba(42, 157, 143, 0.20);
+      background: var(--accent);
+      color: #FFFFFF;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    .btn.danger:hover {
+      background: var(--accent-dark);
+      border-color: var(--accent-dark);
     }
 
     .grid {
@@ -614,22 +621,22 @@
     }
 
     .status.pending {
-      color: var(--warning);
-      background: var(--warning-bg);
-      border-color: var(--warning-bg);
+      color: #B45309;
+      background: rgba(244, 162, 97, 0.15);
+      border-color: rgba(244, 162, 97, 0.30);
     }
 
     .status.doing,
     .status.confirm {
-      color: var(--accent);
-      background: var(--info-bg);
-      border-color: var(--info-bg);
+      color: #B45309;
+      background: rgba(244, 162, 97, 0.15);
+      border-color: rgba(244, 162, 97, 0.30);
     }
 
     .status.done {
-      color: var(--success);
-      background: var(--success-bg);
-      border-color: var(--success-bg);
+      color: #1A5C54;
+      background: rgba(42, 157, 143, 0.12);
+      border-color: rgba(42, 157, 143, 0.25);
     }
 
     .status.idle {
@@ -639,9 +646,10 @@
     }
 
     .status.overdue {
-      color: var(--danger);
-      background: var(--danger-bg);
-      border-color: var(--danger-bg);
+      color: #FFFFFF;
+      background: #E76F51;
+      border-color: #E76F51;
+      font-weight: 600;
     }
 
     .pill-row {
@@ -1521,18 +1529,19 @@
 
     .subnav button {
       min-height: 34px;
-      padding: 8px 14px;
-      border-radius: var(--radius-sm);
-      background: transparent;
-      color: var(--muted);
-      border: 1px solid transparent;
-      font-weight: 700;
+      padding: 8px 18px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #FFFFFF;
+      border: 1px solid var(--accent);
+      font-weight: 600;
     }
 
     .subnav button.active {
-      background: var(--accent);
+      background: var(--accent-dark);
       color: #FFFFFF;
-      border-color: var(--accent);
+      border-color: var(--accent-dark);
+      font-weight: 700;
     }
 
     .inventory-frame {
@@ -1699,12 +1708,40 @@
     }
 
     .record-actions button {
-      padding: 5px 8px;
-      border-radius: 7px;
-      border: 1px solid var(--rule);
-      color: var(--ink);
-      background: #FFFFFF;
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--accent);
+      color: #FFFFFF;
+      background: var(--accent);
       font-size: 12px;
+      font-weight: 600;
+    }
+    .record-actions button[data-action="done"] {
+      background: #2A9D8F;
+      border-color: #2A9D8F;
+      color: #FFFFFF;
+    }
+    .record-actions button[data-action="edit"] {
+      background: #2A9D8F;
+      border-color: #2A9D8F;
+      color: #FFFFFF;
+    }
+    .record-actions button[data-action="delete"] {
+      background: #1A1A1A;
+      border-color: #1A1A1A;
+      color: #FFFFFF;
+    }
+    .record-actions button[data-finance-action="delete"] {
+      background: #1A1A1A;
+      border-color: #1A1A1A;
+      color: #FFFFFF;
+    }
+    .record-actions button[data-finance-action="partialPay"],
+    .record-actions button[data-finance-action="partialInvoice"],
+    .record-actions button[data-finance-action="noInvoice"] {
+      background: #2A9D8F;
+      border-color: #2A9D8F;
+      color: #FFFFFF;
     }
 
     .status-select {
@@ -2157,7 +2194,7 @@
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
-        <h1>Angela<br>OF采购工作台</h1>
+        <h1>Angela的独家定制</h1>
         <p>机油、雨刷、车衣、蓄电池、防冻液等汽车后市场产品</p>
       </div>
       <nav class="nav" id="nav"><button data-nav="home" class="active"><span>首页・今日总览</span><small>5</small></button><button data-nav="suppliers" class=""><span>供应商管理</span><small>0</small></button><button data-nav="orders" class=""><span>采购订单 &amp; 跟进</span><small>0</small></button><button data-nav="smartEmail" class=""><span>智能邮箱</span><small>0</small></button><button data-nav="finance" class=""><span>付款 &amp; 发票管理</span><small>1</small></button><button data-nav="reconciliation" class=""><span>工厂月结对账</span><small>0</small></button><button data-nav="antifake" class=""><span>防伪标管理</span><small>0</small></button><button data-nav="weekly" class=""><span>周报管理</span><small>5</small></button><button data-nav="projects" class=""><span>项目专项跟进</span><small>2</small></button></nav>
@@ -2297,7 +2334,7 @@
           <button type="button" data-supplier-tab="contracts">合同管理</button>
         </div>
         <div id="supplierProfilePanel" style="display: block;">
-          <div class="grid cols-3" id="factoryCards"><div class="factory-card " data-factory-card="莱克"><div><h4>莱克</h4><p>主营：机油、防冻液 · 对接人：未填写</p><p>未完成 2 项 · 总记录 2 项</p><p>跟进莱克机油 T7/T9 生产进度，确认预计发货节点。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn danger factory-delete-btn" data-delete-factory="莱克" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div><div class="factory-card " data-factory-card="纯发"><div><h4>纯发</h4><p>主营：雨刷 · 对接人：未填写</p><p>未完成 1 项 · 总记录 1 项</p><p>跟进纯发雨刷 LOGO 改版确认和旧版处理方式。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn danger factory-delete-btn" data-delete-factory="纯发" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div><div class="factory-card " data-factory-card="纳科达"><div><h4>纳科达</h4><p>主营：供应商合同 / 成品采购 · 对接人：未填写</p><p>未完成 1 项 · 总记录 1 项</p><p>整理纳科达合同续签条款沟通进度。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn danger factory-delete-btn" data-delete-factory="纳科达" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div><div class="factory-card " data-factory-card="汇财"><div><h4>汇财</h4><p>主营：成品采购 · 对接人：未填写</p><p>未完成 0 项 · 总记录 0 项</p><p>暂无历史沟通记录</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status done">正常</span><button class="btn danger factory-delete-btn" data-delete-factory="汇财" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div><div class="factory-card " data-factory-card="和润宇"><div><h4>和润宇</h4><p>主营：成品采购 · 对接人：未填写</p><p>未完成 0 项 · 总记录 0 项</p><p>暂无历史沟通记录</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status done">正常</span><button class="btn danger factory-delete-btn" data-delete-factory="和润宇" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div><div class="factory-card " data-factory-card="小松"><div><h4>小松</h4><p>主营：票据与采购事项 · 对接人：未填写</p><p>未完成 1 项 · 总记录 1 项</p><p>记录小松发票单位转换事项，跟进发票状态。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn danger factory-delete-btn" data-delete-factory="小松" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button></div></div></div>
+          <div class="grid cols-3" id="factoryCards"><div class="factory-card " data-factory-card="莱克"><div><h4>莱克</h4><p>主营：机油、防冻液 · 对接人：未填写</p><p>未完成 2 项 · 总记录 2 项</p><p>跟进莱克机油 T7/T9 生产进度，确认预计发货节点。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn factory-delete-btn" data-delete-factory="莱克" style="font-size:12px;padding:4px 10px;min-height:auto;background:#1A1A1A;color:#fff;border:1px solid #1A1A1A;border-radius:999px;">删除</button></div></div><div class="factory-card " data-factory-card="纯发"><div><h4>纯发</h4><p>主营：雨刷 · 对接人：未填写</p><p>未完成 1 项 · 总记录 1 项</p><p>跟进纯发雨刷 LOGO 改版确认和旧版处理方式。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn factory-delete-btn" data-delete-factory="纯发" style="font-size:12px;padding:4px 10px;min-height:auto;background:#1A1A1A;color:#fff;border:1px solid #1A1A1A;border-radius:999px;">删除</button></div></div><div class="factory-card " data-factory-card="纳科达"><div><h4>纳科达</h4><p>主营：供应商合同 / 成品采购 · 对接人：未填写</p><p>未完成 1 项 · 总记录 1 项</p><p>整理纳科达合同续签条款沟通进度。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn factory-delete-btn" data-delete-factory="纳科达" style="font-size:12px;padding:4px 10px;min-height:auto;background:#1A1A1A;color:#fff;border:1px solid #1A1A1A;border-radius:999px;">删除</button></div></div><div class="factory-card " data-factory-card="汇财"><div><h4>汇财</h4><p>主营：成品采购 · 对接人：未填写</p><p>未完成 0 项 · 总记录 0 项</p><p>暂无历史沟通记录</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status done">正常</span><button class="btn factory-delete-btn" data-delete-factory="汇财" style="font-size:12px;padding:4px 10px;min-height:auto;background:#1A1A1A;color:#fff;border:1px solid #1A1A1A;border-radius:999px;">删除</button></div></div><div class="factory-card " data-factory-card="和润宇"><div><h4>和润宇</h4><p>主营：成品采购 · 对接人：未填写</p><p>未完成 0 项 · 总记录 0 项</p><p>暂无历史沟通记录</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status done">正常</span><button class="btn factory-delete-btn" data-delete-factory="和润宇" style="font-size:12px;padding:4px 10px;min-height:auto;background:#1A1A1A;color:#fff;border:1px solid #1A1A1A;border-radius:999px;">删除</button></div></div><div class="factory-card " data-factory-card="小松"><div><h4>小松</h4><p>主营：票据与采购事项 · 对接人：未填写</p><p>未完成 1 项 · 总记录 1 项</p><p>记录小松发票单位转换事项，跟进发票状态。</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;"><span class="status pending">待跟进</span><button class="btn factory-delete-btn" data-delete-factory="小松" style="font-size:12px;padding:4px 10px;min-height:auto;background:#1A1A1A;color:#fff;border:1px solid #1A1A1A;border-radius:999px;">删除</button></div></div></div>
           <div class="card" id="factoryDetailCard" style="margin-top:14px; display:none;">
             <div class="card-header">
               <h3 id="factoryDetailTitle">工厂跟进明细</h3>
@@ -2427,7 +2464,7 @@
               </select>
               <button class="btn primary" id="applyOrderBulkStatusBtn">一键更新选中订单</button>
               <button class="btn" id="completeSelectedOrdersBtn">一键完成</button>
-              <button class="btn danger" id="deleteSelectedOrdersBtn">一键删除</button>
+              <button class="btn" id="deleteSelectedOrdersBtn" style="background:#1A1A1A;color:#fff;border:1px solid #1A1A1A;">一键删除</button>
               <button class="btn" id="clearSelectedOrdersBtn">清空选择</button>
             </div>
             <div id="orderTable"><div class="empty">暂无记录，可通过“新建工作记录”或首页快捷输入添加。</div></div>

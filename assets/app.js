@@ -1151,7 +1151,7 @@
         '</p></div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">' +
         (open ? '<span class="status pending">待跟进</span>' : '<span class="status done">正常</span>') +
         '<button class="btn factory-rename-btn" data-rename-factory="' + escapeHTML(f) + '" style="font-size:12px;padding:4px 10px;min-height:auto;">修改名称</button>' +
-        '<button class="btn danger factory-delete-btn" data-delete-factory="' + escapeHTML(f) + '" style="font-size:12px;padding:4px 10px;min-height:auto;">删除</button>' +
+        '<button class="btn factory-delete-btn" data-delete-factory="' + escapeHTML(f) + '" style="font-size:12px;padding:4px 10px;min-height:auto;background:#1A1A1A;color:#fff;border:1px solid #1A1A1A;border-radius:999px;">删除</button>' +
         '</div></div>';
     }).join('');
     $('factoryCards').querySelectorAll('[data-factory-card]').forEach(function (card) {
@@ -2291,7 +2291,7 @@
       if (flow.paymentStatus !== '已付款') actions.push('<button class="btn primary" data-settlement-action="pay" data-flow-id="' + flow.id + '">登记已付款</button>');
       // 【月结迭代新增】一键扣减防伪标按钮（仅未扣减时显示）
       if (!flow.antifakeDeducted) actions.push('<button class="btn" data-settlement-action="deductAntifake" data-flow-id="' + flow.id + '">一键扣减防伪标</button>');
-      actions.push('<button class="btn danger" data-settlement-action="delete" data-flow-id="' + flow.id + '">删除流转单</button>');
+      actions.push('<button class="btn" data-settlement-action="delete" data-flow-id="' + flow.id + '" style="background:#1A1A1A;color:#fff;border:1px solid #1A1A1A;">删除流转单</button>');
       return '<div class="flow-card">' +
         '<div class="flow-head"><div>' +
         '<h4>' + escapeHTML(flow.factory || '未指定工厂') + ' · ' + escapeHTML(flow.month || '未填账期') + '月结</h4>' +
@@ -6744,7 +6744,7 @@
         '<td class="mono">' + escapeHTML(c.startDate || '') + '</td>' +
         '<td class="mono">' + escapeHTML(c.expiryDate || '') + '</td>' +
         '<td>' + statusHTML + '</td>' +
-        '<td><button class="btn danger" style="font-size:12px;padding:4px 10px;min-height:auto;" onclick="window.__deleteContract(' + idx + ')">删除</button></td>' +
+        '<td><button class="btn" style="font-size:12px;padding:4px 10px;min-height:auto;background:#1A1A1A;color:#fff;border:1px solid #1A1A1A;border-radius:999px;" onclick="window.__deleteContract(' + idx + ')">删除</button></td>' +
       '</tr>';
     }).join('');
 
