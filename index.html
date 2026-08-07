@@ -2636,6 +2636,20 @@
                 <input id="settlementOrderNo" placeholder="做采购单后补入">
               </div>
               <div class="field">
+                <label for="settlementOrderCount">订单总数</label>
+                <input id="settlementOrderCount" type="number" min="0" step="1" placeholder="月结订单总数（用于防伪标扣减）">
+              </div>
+              <div class="field">
+                <label for="settlementAntifakeRatio">防伪标扣减比例</label>
+                <div style="display:flex;gap:6px;align-items:center;">
+                  <select id="settlementAntifakeRatio" style="flex:1;">
+                    <option value="1:1">1:1</option>
+                    <option value="4:1">4:1</option>
+                  </select>
+                  <button class="btn" id="settlementRatioAddBtn" type="button" style="font-size:12px;padding:6px 10px;min-height:auto;white-space:nowrap;">新增比例</button>
+                </div>
+              </div>
+              <div class="field">
                 <label for="settlementPayDue">预计付款日</label>
                 <input id="settlementPayDue" type="date">
               </div>

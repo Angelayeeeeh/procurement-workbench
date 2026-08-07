@@ -403,6 +403,10 @@
       if (flow.amount) flow.amount = normalizeCurrency(flow.amount);
       if (flow.checkAmount) flow.checkAmount = normalizeCurrency(flow.checkAmount);
       flow.history = Array.isArray(flow.history) ? flow.history : [];
+      // 【月结迭代新增】初始化订单总数、防伪标比例、扣减标记
+      if (typeof flow.orderCount !== 'number') flow.orderCount = 0;
+      if (!flow.antifakeRatio) flow.antifakeRatio = '1:1';
+      if (typeof flow.antifakeDeducted !== 'boolean') flow.antifakeDeducted = false;
     });
     state.financePayments.forEach(function (payment) {
       payment.paymentStatus = payment.paymentStatus || '待付款';
@@ -742,6 +746,37 @@
     $('cancelTempPaymentFormBtn').addEventListener('click', closeTemporaryPaymentForm);
     $('settlementBillDate').addEventListener('change', syncSettlementPayDue);
     $('settlementBillFile').addEventListener('change', onSettlementBillFileChange);
+    // 【月结迭代新增】新增扣减比例按钮 + 采购单号输入自动同步工作内容
+    var settlementRatioAddBtn = $('settlementRatioAddBtn');
+    if (settlementRatioAddBtn) {
+      settlementRatioAddBtn.addEventListener('click', function () {
+        var custom = window.prompt('请输入自定义扣减比例（格式如 3:1、5:1、2:1）');
+        if (!custom) return;
+        var parsed = parseAntifakeRatio(custom);
+        if (!parsed || parsed <= 0) { toast('比例格式无效，请使用如 3:1 的格式'); return; }
+        var display = ratioToDisplay(parsed);
+        var ratioSelect = $('settlementAntifakeRatio');
+        if (ratioSelect) {
+          var exists = Array.prototype.some.call(ratioSelect.options, function (opt) { return opt.value === display; });
+          if (!exists) {
+            var newOpt = document.createElement('option');
+            newOpt.value = display;
+            newOpt.textContent = display;
+            ratioSelect.appendChild(newOpt);
+          }
+          ratioSelect.value = display;
+        }
+      });
+    }
+    // 【月结迭代新增】采购单号输入后，工作内容自动同步为工厂名称+采购订单
+    var settlementOrderNoInput = $('settlementOrderNo');
+    if (settlementOrderNoInput) {
+      settlementOrderNoInput.addEventListener('change', syncSettlementWorkContent);
+    }
+    var settlementFactorySelect = $('settlementFactory');
+    if (settlementFactorySelect) {
+      settlementFactorySelect.addEventListener('change', syncSettlementWorkContent);
+    }
     $('supplierModalBackdrop').addEventListener('click', function (e) {
       if (e.target === $('supplierModalBackdrop')) closeSupplierModal();
     });
@@ -2200,6 +2235,21 @@
     $('settlementPayDue').value = toYMD(lastWeekdayOfMonth(billDate, 4));
   }
 
+  // 【月结迭代新增】采购单号输入后，实时预览工作内容（工厂名称+采购订单）
+  function syncSettlementWorkContent() {
+    var factory = $('settlementFactory') ? $('settlementFactory').value : '';
+    var orderNo = $('settlementOrderNo') ? $('settlementOrderNo').value.trim() : '';
+    var diffInput = $('settlementDiff');
+    if (!diffInput) return;
+    // 仅在差异/备注为空或为自动生成内容时更新，避免覆盖用户手动输入
+    var current = diffInput.value.trim();
+    if (!current || /^[\u4e00-\u9fa5\w]+采购订单.*$/.test(current) || current === (factory + ' 采购订单')) {
+      if (factory && orderNo) {
+        diffInput.value = factory + ' 采购订单';
+      }
+    }
+  }
+
   function renderSettlementFlowPanel() {
     var panel = $('settlementFlowPanel');
     if (!panel) return;
@@ -2219,6 +2269,8 @@
       if (flow.reconciliationStatus !== '已完成') actions.push('<button class="btn primary" data-settlement-action="confirm" data-flow-id="' + flow.id + '">确认对账完成</button>');
       if (flow.orderStatus !== '已完成') actions.push('<button class="btn primary" data-settlement-action="order" data-flow-id="' + flow.id + '">已做采购单</button>');
       if (flow.paymentStatus !== '已付款') actions.push('<button class="btn primary" data-settlement-action="pay" data-flow-id="' + flow.id + '">登记已付款</button>');
+      // 【月结迭代新增】一键扣减防伪标按钮（仅未扣减时显示）
+      if (!flow.antifakeDeducted) actions.push('<button class="btn" data-settlement-action="deductAntifake" data-flow-id="' + flow.id + '">一键扣减防伪标</button>');
       actions.push('<button class="btn danger" data-settlement-action="delete" data-flow-id="' + flow.id + '">删除流转单</button>');
       return '<div class="flow-card">' +
         '<div class="flow-head"><div>' +
@@ -2227,6 +2279,8 @@
         ' · 核对金额：' + escapeHTML(flow.checkAmount || '未填') +
         ' · 预计付款：' + escapeHTML(formatDate(flow.paymentDueDate) || '未设置') + '</div>' +
         (flow.diff ? '<div class="flow-meta">差异/备注：' + escapeHTML(flow.diff) + '</div>' : '') +
+        (flow.orderCount ? '<div class="flow-meta">订单总数：' + escapeHTML(String(flow.orderCount)) + (flow.antifakeRatio ? ' · 防伪标比例：' + escapeHTML(flow.antifakeRatio) : '') + '</div>' : '') +
+        (flow.antifakeDeducted ? '<div class="flow-meta" style="color:var(--accent);">防伪标已扣减：' + escapeHTML(String(flow.antifakeDeductQty || 0)) + ' 个（归属：' + escapeHTML(flow.antifakeDeductFactory || flow.factory || '') + '）</div>' : '') +
         '</div><div>' + flowFinalBadge(flow) + '</div></div>' +
         '<div class="flow-steps">' +
         flowStepHTML('1. 对账', flow.reconciliationStatus, flow.billDate, flow.reconciliationStatus === '已完成' ? 'done' : 'active') +
@@ -3154,6 +3208,10 @@
       amount: normalizeCurrency($('settlementAmount').value),
       checkAmount: normalizeCurrency($('settlementCheckAmount').value),
       orderNo: $('settlementOrderNo').value.trim(),
+      // 【月结迭代新增】订单总数和防伪标扣减比例
+      orderCount: Number($('settlementOrderCount') ? $('settlementOrderCount').value : 0) || 0,
+      antifakeRatio: $('settlementAntifakeRatio') ? $('settlementAntifakeRatio').value : '1:1',
+      antifakeDeducted: false,
       paymentDueDate: paymentDueDate,
       diff: $('settlementDiff').value.trim(),
       reconciliationStatus: '待对账',
@@ -3270,6 +3328,64 @@
       completeSettlementPayment(flow);
       toast('已登记付款，月结流转已闭环');
     }
+    // 【月结迭代新增】一键扣减防伪标
+    if (action === 'deductAntifake') {
+      var orderCount = Number(flow.orderCount || 0);
+      if (!orderCount) { toast('请先填写订单总数'); return; }
+      var ratioStr = flow.antifakeRatio || '1:1';
+      var ratioVal = parseAntifakeRatio(ratioStr);
+      if (!ratioVal || ratioVal <= 0) { toast('防伪标扣减比例格式无效'); return; }
+      var deduction = Math.ceil(orderCount * ratioVal);
+      // 【月结迭代新增】汇财前缀匹配规则：工厂名称前缀带「汇财」统一归属深圳汇财新材料有限公司
+      var deductFactory = flow.factory || '';
+      if (deductFactory.indexOf('汇财') === 0) {
+        deductFactory = '深圳汇财新材料有限公司';
+      }
+      if (typeof state.antifakeStock[deductFactory] !== 'number') state.antifakeStock[deductFactory] = 0;
+      var beforeStock = state.antifakeStock[deductFactory];
+      state.antifakeStock[deductFactory] = Math.max(0, beforeStock - deduction);
+      var actualDeducted = beforeStock - state.antifakeStock[deductFactory];
+      // 写入防伪标流水
+      state.antifakeMovements.unshift({
+        id: makeId(),
+        type: 'use',
+        factory: deductFactory,
+        qty: actualDeducted,
+        date: toYMD(today()),
+        note: '月结对账一键扣减 · 使用比例 ' + ratioStr + ' · 订单总数 ' + orderCount + ' · 工厂 ' + (flow.factory || '') + ' · 账期 ' + (flow.month || ''),
+        orderNo: flow.orderNo || '',
+        orderQty: orderCount,
+        category: '',
+        labelSize: '',
+        source: 'settlement_deduct',
+        createdAt: nowISO()
+      });
+      // 写入防伪标使用记录
+      state.antifakeUsageRecords.unshift({
+        id: makeId(),
+        orderNo: flow.orderNo || '',
+        factory: deductFactory,
+        ratio: ratioStr,
+        ratioValue: ratioVal,
+        deductionQty: actualDeducted,
+        orderQty: orderCount,
+        fileName: '月结对账一键扣减（' + (flow.month || '') + '）',
+        createdAt: nowISO()
+      });
+      // 操作日志
+      state.operationLogs = state.operationLogs || [];
+      state.operationLogs.unshift({
+        time: nowISO(),
+        action: '月结对账一键扣减防伪标',
+        detail: deductFactory + ' / 账期 ' + (flow.month || '') + ' / 订单总数 ' + orderCount + ' / 比例 ' + ratioStr + ' / 扣减 ' + actualDeducted + ' / 扣减前 ' + beforeStock + ' / 扣减后 ' + state.antifakeStock[deductFactory],
+        factory: deductFactory
+      });
+      state.operationLogs = state.operationLogs.slice(0, 300);
+      flow.antifakeDeducted = true;
+      flow.antifakeDeductQty = actualDeducted;
+      flow.antifakeDeductFactory = deductFactory;
+      toast('已扣减防伪标：' + deductFactory + ' 扣减 ' + actualDeducted + ' 个（比例 ' + ratioStr + '），剩余 ' + state.antifakeStock[deductFactory]);
+    }
     flow.updatedAt = nowISO();
     flow.history.push({ time: flow.updatedAt, action: settlementActionText(action) });
     saveState();
@@ -3280,6 +3396,7 @@
     if (action === 'confirm') return '确认对账完成';
     if (action === 'order') return '已做采购单';
     if (action === 'pay') return '登记已付款';
+    if (action === 'deductAntifake') return '一键扣减防伪标';
     return action;
   }
 
@@ -3300,9 +3417,12 @@
   function completeSettlementOrder(flow) {
     flow.reconciliationStatus = '已完成';
     flow.orderStatus = '已完成';
+    // 【月结迭代新增】工作内容自动同步为 工厂名称+采购订单
+    var orderWorkContent = (flow.factory || '') + ' 采购订单';
     updateSettlementLinkedRecord(flow.orderRecordId, {
       status: '已完成',
       orderNo: flow.orderNo || '',
+      content: orderWorkContent,
       nextStep: '',
       note: flowNote(flow, '采购单已完成，等待账期内付款。')
     });
@@ -3413,8 +3533,13 @@
       orders: '月结货款通常15号左右做采购单',
       finance: '月结货款通常20-30号付款'
     };
+    // 【月结迭代新增】工作内容字段：录入采购订单编号后自动同步为 工厂名称+采购订单
+    var workContent = titleMap[moduleId];
+    if (flow.orderNo && moduleId === 'orders') {
+      workContent = (flow.factory || '') + ' 采购订单';
+    }
     return addRecord({
-      content: titleMap[moduleId],
+      content: workContent,
       factory: flow.factory,
       product: '月结流转',
       module: moduleId,
