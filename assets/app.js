@@ -4075,6 +4075,7 @@
       totalAmount: summary.amount || 0,
       summaryLine: summary.line || '',
       items: detailItems,
+      _sourceFileName: fileName,
       gyModels: detailItems.reduce(function (acc, item) { if (item.gyModel) acc[item.gyModel] = true; return acc; }, {}),
       productNames: detailItems.reduce(function (acc, item) { if (item.productName) acc[item.productName] = true; return acc; }, {}),
       orderNos: topOrderNo ? (function () { var o = {}; o[topOrderNo] = true; return o; })() : {},
@@ -4719,9 +4720,16 @@
         if (!ratio) {
           return '<div class="feedback-item" style="margin-top:10px;color:var(--danger);">防伪标扣减：使用比例格式无效，请修改后再确认</div>';
         }
-        var specialHint = isSpecial
-          ? '<div class="feedback-item" style="margin-top:6px;color:var(--warning);">⚠ 特殊工厂规则：将跳过工厂库存入库和财务待付款，订单状态标记为无需付款，仅扣减防伪标并生成使用记录</div>'
-          : '';
+        // 【网单迭代】特殊工厂文件名含"网单"时，跳过库存但正常走待付款流转
+        var isWangdanOrder = isSpecial && /网单/.test(single._sourceFileName || '');
+        var specialHint = '';
+        if (isSpecial) {
+          if (isWangdanOrder) {
+            specialHint = '<div class="feedback-item" style="margin-top:6px;color:var(--accent);">ℹ 特殊工厂网单：将跳过工厂库存入库，但正常走待付款和待开票流转，防伪标正常扣减并生成使用记录</div>';
+          } else {
+            specialHint = '<div class="feedback-item" style="margin-top:6px;color:var(--warning);">⚠ 特殊工厂规则：将跳过工厂库存入库和财务待付款，订单状态标记为无需付款，仅扣减防伪标并生成使用记录</div>';
+          }
+        }
         // 【增量变更】构建下拉选择框选项
         var currentDisplay = ratioToDisplay(ratio);
         var allOptions = previewAntifakeRatioOptions.slice();
@@ -4927,14 +4935,23 @@
     // 【防伪标迭代新增】特殊工厂分支判断
     var importSupplier = state.suppliers.find(function (s) { return s.name === group.supplier; });
     var isSpecial = importSupplier && importSupplier.isSpecialFactory;
+    // 【网单迭代】特殊工厂文件名含"网单"时，跳过库存但正常走待付款+待开票流转
+    var isWangdan = isSpecial && /网单/.test(parsed.fileName || '');
     var updatedInventory = 0;
     var antifakeResult = applyAntifakeOrderDeduction(group, parsed.fileName);
-    if (isSpecial) {
-      // 分支B：特殊工厂 — 跳过库存入库和财务待付款，订单标记无需付款
+    if (isSpecial && !isWangdan) {
+      // 分支B：特殊工厂（非网单）— 跳过库存入库和财务待付款，订单标记无需付款
       record.status = '无需付款';
       record.nextStep = '特殊工厂采购订单，无需付款，仅扣减防伪标';
       record.note = (record.note || '') + ' | 特殊工厂规则：跳过工厂库存入库和财务待付款';
       record.updatedAt = nowISO();
+    } else if (isSpecial && isWangdan) {
+      // 分支B2：特殊工厂网单 — 跳过库存入库，但正常走待付款和待开票流转
+      record.status = '待付款';
+      record.nextStep = '特殊工厂网单采购订单，跳过库存入库，正常走待付款和待开票';
+      record.note = (record.note || '') + ' | 特殊工厂网单规则：跳过工厂库存入库，正常走财务待付款和待开票';
+      record.updatedAt = nowISO();
+      if (upsertPurchaseOrderPayment(group, record, amount, parsed.fileName)) updatedPayments++;
     } else {
       // 分支A：普通工厂 — 执行库存入库和财务待付款
       updatedInventory = applyPurchaseOrderInventoryReceipt(group, record, parsed.fileName);
@@ -4952,9 +4969,14 @@
     switchSection('finance');
     var panel = $('financePaymentPanel');
     if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    var toastMsg = isSpecial
-      ? '已完成特殊工厂采购单识别：' + group.supplier + '（无需付款），库存无变动'
-      : '已完成采购单识别并进入流转：库存入库 ' + updatedInventory + ' 行，财务待付款 ' + updatedPayments + ' 笔';
+    var toastMsg;
+    if (isSpecial && isWangdan) {
+      toastMsg = '已完成特殊工厂网单识别：' + group.supplier + '（跳过库存，正常走待付款和待开票），财务待付款 ' + updatedPayments + ' 笔';
+    } else if (isSpecial) {
+      toastMsg = '已完成特殊工厂采购单识别：' + group.supplier + '（无需付款），库存无变动';
+    } else {
+      toastMsg = '已完成采购单识别并进入流转：库存入库 ' + updatedInventory + ' 行，财务待付款 ' + updatedPayments + ' 笔';
+    }
     if (antifakeResult && !antifakeResult.skipped) {
       toastMsg += '；防伪标自动扣减 ' + antifakeResult.factory + '：' + antifakeResult.deducted + ' 个（比例 ' + antifakeResult.ratio + '，剩余 ' + antifakeResult.after + '）';
     } else if (antifakeResult && antifakeResult.skipped && antifakeResult.factory) {
