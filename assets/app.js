@@ -87,6 +87,8 @@
   var libraryQuickFilter = '';
   var orderQuickFilter = '';
   var financeListFilter = null;
+  // 【增量变更】付款发票管理表格列筛选状态
+  var financeTableFilters = {};
   var selectedOrderIds = [];
   var pendingPurchaseOrderImport = null;
   var pendingPdfPurchaseOrderImport = null;
@@ -211,6 +213,24 @@
 
   function displayAmount(record) {
     if (!record || !record.amount) return '';
+    // 【增量变更】采购订单跟进页面：部分付款后展示剩余待付尾款及比例而非总金额
+    if (record.module === 'orders' && record.orderNo && isCurrencyRecord(record)) {
+      var linkedPayment = (state.financePayments || []).find(function (p) {
+        return p.orderNo === record.orderNo && (!record.factory || p.factory === record.factory) && p.type === '采购订单待付款';
+      });
+      if (linkedPayment) {
+        var total = financePaymentTotalAmount(linkedPayment);
+        var remaining = financePaymentRemainingAmount(linkedPayment);
+        var paid = financePaymentPaidAmount(linkedPayment);
+        if (paid > 0 && remaining > 0) {
+          var remainingPct = total ? (remaining / total * 100) : 0;
+          return normalizeCurrency(formatCurrency(remaining)) + '（尾款 ' + remainingPct.toFixed(0) + '%）';
+        }
+        if (paid > 0 && remaining === 0) {
+          return '已付清';
+        }
+      }
+    }
     return isCurrencyRecord(record) ? normalizeCurrency(record.amount) : record.amount;
   }
 
@@ -2365,6 +2385,8 @@
       return;
     }
     var list = applyFinanceListFilter(scoped);
+    // 【增量变更】应用表格列筛选
+    list = applyFinanceTableFilters(list);
     var filterBar = financeListFilter
       ? '<div class="quick-feedback" style="display:block;margin:12px 0;"><div class="feedback-item updated">当前筛选：' + escapeHTML(financeFilterLabel(financeListFilter)) + '，共 ' + list.length + ' 笔。<button class="btn" id="clearFinanceListFilterBtn" type="button" style="margin-left:10px;">显示全部</button></div></div>'
       : '';
@@ -2380,6 +2402,9 @@
       var invoiceAmount = financePaymentInvoicedAmount(p);
       var invoiceRemaining = financePaymentInvoiceRemainingAmount(p);
       var invoiceFlowHtml = financeInvoiceFlowHTML(p);
+      var remainingPercent = totalAmount ? (remainingAmount / totalAmount * 100) : 0;
+      var invoicePercent = totalAmount ? (invoiceAmount / totalAmount * 100) : 0;
+      var invoiceRemainingPercent = totalAmount ? (invoiceRemaining / totalAmount * 100) : 0;
       return '<tr>' +
         '<td>' + escapeHTML(p.type || '') + '</td>' +
         '<td>' + escapeHTML(p.factory || '未指定') + '</td>' +
@@ -2387,15 +2412,15 @@
         '<td>' +
           '<div>总货款：' + escapeHTML(formatCurrency(totalAmount) || normalizeCurrency(p.amount)) + '</div>' +
           '<div class="muted">已付款：' + escapeHTML(formatCurrency(paidAmount) || '￥0.00') + '（' + percent.toFixed(2) + '%）</div>' +
-          '<div class="muted">剩余待付：' + escapeHTML(formatCurrency(remainingAmount) || '￥0.00') + '</div>' +
+          '<div class="muted">剩余待付：' + escapeHTML(formatCurrency(remainingAmount) || '￥0.00') + '（' + remainingPercent.toFixed(2) + '%）</div>' +
         '</td>' +
         '<td>' + escapeHTML(p.requester || '') + '</td>' +
         '<td>' + escapeHTML(formatDate(p.dueDate) || '') + '</td>' +
         '<td><span class="status ' + (p.paymentStatus === '已付款' ? 'done' : statusClass('待跟进', p.dueDate)) + '">' + escapeHTML(p.paymentStatus) + '</span></td>' +
         '<td><span class="status ' + (p.invoiceStatus === '已开票' ? 'done' : (p.invoiceStatus === '部分开票' ? 'doing' : (p.invoiceStatus === '无需开票' ? 'idle' : 'pending'))) + '">' + escapeHTML(p.invoiceStatus) + '</span>' +
           (p.invoiceStatus === '无需开票' ? '' :
-            '<div class="muted">已开票：' + escapeHTML(formatCurrency(invoiceAmount) || '￥0.00') + '</div>' +
-            '<div class="muted">剩余待开：' + escapeHTML(formatCurrency(invoiceRemaining) || '￥0.00') + '</div>') + '</td>' +
+            '<div class="muted">已开票：' + escapeHTML(formatCurrency(invoiceAmount) || '￥0.00') + '（' + invoicePercent.toFixed(2) + '%）</div>' +
+            '<div class="muted">剩余待开：' + escapeHTML(formatCurrency(invoiceRemaining) || '￥0.00') + '（' + invoiceRemainingPercent.toFixed(2) + '%）</div>') + '</td>' +
         '<td>' + escapeHTML(p.note || '') + flowHtml + invoiceFlowHtml + '</td>' +
         '<td><div class="record-actions">' +
         '<button data-finance-action="partialPay" data-payment-id="' + p.id + '">登记分批付款</button>' +
@@ -2405,10 +2430,10 @@
         '</div></td>' +
         '</tr>';
     }).join('');
+    // 【增量变更】构建带筛选功能的表头
+    var filterHeader = buildFinanceTableFilterHeader();
     panel.innerHTML = totalCard + '<div class="finance-month-grid">' + cards + '</div>' + filterBar +
-      (list.length ? '<div class="table-wrap"><table><thead><tr>' +
-      '<th>来源</th><th>工厂</th><th>采购单号 / 金蝶单号</th><th>金额</th><th>请款人</th><th>预计付款日</th><th>付款状态</th><th>开票状态</th><th>备注</th><th>操作</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">当前筛选条件下暂无订单。</div>');
+      (list.length ? '<div class="table-wrap"><table><thead>' + filterHeader + '</thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">当前筛选条件下暂无订单。</div>');
     bindFinanceFilterCards(panel);
     if ($('clearFinanceListFilterBtn')) {
       $('clearFinanceListFilterBtn').addEventListener('click', function () {
@@ -2416,8 +2441,189 @@
         renderFinancePaymentPanel();
       });
     }
+    bindFinanceTableFilterEvents(panel);
     panel.querySelectorAll('[data-finance-action]').forEach(function (btn) {
       btn.addEventListener('click', onFinancePaymentAction);
+    });
+  }
+
+  // 【增量变更】构建付款发票管理表格带筛选功能的表头
+  function buildFinanceTableFilterHeader() {
+    var f = financeTableFilters;
+    var th = function (label, filterHtml) {
+      return '<th>' + escapeHTML(label) + filterHtml + '</th>';
+    };
+    return '<tr>' +
+      th('来源', '<input class="fin-col-filter" data-fin-col="type" value="' + escapeHTML(f.type || '') + '" placeholder="筛选…" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">') +
+      th('工厂', '<input class="fin-col-filter" data-fin-col="factory" value="' + escapeHTML(f.factory || '') + '" placeholder="筛选…" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">') +
+      th('采购单号', '<input class="fin-col-filter" data-fin-col="orderNo" value="' + escapeHTML(f.orderNo || '') + '" placeholder="筛选…" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">') +
+      th('金额', '<select class="fin-col-filter" data-fin-col="amountRange" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">' +
+        '<option value="">全部</option>' +
+        '<option value="unpaid"' + (f.amountRange === 'unpaid' ? ' selected' : '') + '>有未付尾款</option>' +
+        '<option value="paid"' + (f.amountRange === 'paid' ? ' selected' : '') + '>已付清</option>' +
+        '<option value="partial"' + (f.amountRange === 'partial' ? ' selected' : '') + '>部分付款</option>' +
+        '</select>') +
+      th('请款人', '<input class="fin-col-filter" data-fin-col="requester" value="' + escapeHTML(f.requester || '') + '" placeholder="筛选…" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">') +
+      th('预计付款日', '<input class="fin-col-filter" data-fin-col="dueDate" value="' + escapeHTML(f.dueDate || '') + '" placeholder="筛选…" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">') +
+      th('付款状态', '<div style="margin-top:2px;">' +
+        '<select class="fin-col-filter" data-fin-col="paymentStatus" style="width:100%;font-size:11px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">' +
+        '<option value="">全部</option>' +
+        '<option value="待付款"' + (f.paymentStatus === '待付款' ? ' selected' : '') + '>待付款</option>' +
+        '<option value="部分付款"' + (f.paymentStatus === '部分付款' ? ' selected' : '') + '>部分付款</option>' +
+        '<option value="已付款"' + (f.paymentStatus === '已付款' ? ' selected' : '') + '>已付款</option>' +
+        '<option value="无需付款"' + (f.paymentStatus === '无需付款' ? ' selected' : '') + '>无需付款</option>' +
+        '</select>' +
+        '<select class="fin-col-filter" data-fin-col="payPercentRange" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">' +
+        '<option value="">付款比例全部</option>' +
+        '<option value="0"' + (f.payPercentRange === '0' ? ' selected' : '') + '>0%（未付）</option>' +
+        '<option value="1-50"' + (f.payPercentRange === '1-50' ? ' selected' : '') + '>1%-50%</option>' +
+        '<option value="51-99"' + (f.payPercentRange === '51-99' ? ' selected' : '') + '>51%-99%</option>' +
+        '<option value="100"' + (f.payPercentRange === '100' ? ' selected' : '') + '>100%（付清）</option>' +
+        '</select>' +
+        '<input class="fin-col-filter" data-fin-col="paidAmountMin" value="' + escapeHTML(f.paidAmountMin || '') + '" placeholder="已付≥金额" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">' +
+        '</div>') +
+      th('开票状态', '<div style="margin-top:2px;">' +
+        '<select class="fin-col-filter" data-fin-col="invoiceStatus" style="width:100%;font-size:11px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">' +
+        '<option value="">全部</option>' +
+        '<option value="待开票"' + (f.invoiceStatus === '待开票' ? ' selected' : '') + '>待开票</option>' +
+        '<option value="部分开票"' + (f.invoiceStatus === '部分开票' ? ' selected' : '') + '>部分开票</option>' +
+        '<option value="已开票"' + (f.invoiceStatus === '已开票' ? ' selected' : '') + '>已开票</option>' +
+        '<option value="无需开票"' + (f.invoiceStatus === '无需开票' ? ' selected' : '') + '>无需开票</option>' +
+        '</select>' +
+        '<select class="fin-col-filter" data-fin-col="invoicePercentRange" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">' +
+        '<option value="">开票比例全部</option>' +
+        '<option value="0"' + (f.invoicePercentRange === '0' ? ' selected' : '') + '>0%（未开）</option>' +
+        '<option value="1-50"' + (f.invoicePercentRange === '1-50' ? ' selected' : '') + '>1%-50%</option>' +
+        '<option value="51-99"' + (f.invoicePercentRange === '51-99' ? ' selected' : '') + '>51%-99%</option>' +
+        '<option value="100"' + (f.invoicePercentRange === '100' ? ' selected' : '') + '>100%（开完）</option>' +
+        '</select>' +
+        '<input class="fin-col-filter" data-fin-col="invoicedAmountMin" value="' + escapeHTML(f.invoicedAmountMin || '') + '" placeholder="已开≥金额" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">' +
+        '</div>') +
+      th('备注', '<input class="fin-col-filter" data-fin-col="note" value="' + escapeHTML(f.note || '') + '" placeholder="筛选…" style="width:100%;font-size:11px;margin-top:2px;border:1px solid var(--rule);border-radius:4px;padding:2px 4px;">') +
+      '<th>操作</th>' +
+      '</tr>';
+  }
+
+  // 【增量变更】绑定表格列筛选事件
+  function bindFinanceTableFilterEvents(panel) {
+    panel.querySelectorAll('.fin-col-filter').forEach(function (el) {
+      var eventType = el.tagName === 'SELECT' ? 'change' : 'input';
+      el.addEventListener(eventType, function () {
+        var col = el.getAttribute('data-fin-col');
+        financeTableFilters[col] = el.value.trim();
+        // 只重新渲染表格部分，不重新渲染整个面板
+        var list = applyFinanceListFilter(scopedFinancePaymentsCache);
+        list = applyFinanceTableFilters(list);
+        var tbody = panel.querySelector('tbody');
+        if (!tbody) {
+          // 无数据时需要重新渲染整个面板
+          renderFinancePaymentPanel();
+          return;
+        }
+        if (!list.length) {
+          renderFinancePaymentPanel();
+          return;
+        }
+        tbody.innerHTML = list.map(function (p) {
+          var billNo = p.orderNo || p.kingdeeNo || '待补单号';
+          syncFinancePaymentPaidStatus(p);
+          syncFinancePaymentInvoiceStatus(p);
+          var totalAmount = financePaymentTotalAmount(p);
+          var paidAmount = financePaymentPaidAmount(p);
+          var remainingAmount = financePaymentRemainingAmount(p);
+          var percent = totalAmount ? (paidAmount / totalAmount * 100) : 0;
+          var flowHtml = financePaymentFlowHTML(p);
+          var invoiceAmount = financePaymentInvoicedAmount(p);
+          var invoiceRemaining = financePaymentInvoiceRemainingAmount(p);
+          var invoiceFlowHtml = financeInvoiceFlowHTML(p);
+          var remainingPercent = totalAmount ? (remainingAmount / totalAmount * 100) : 0;
+          var invoicePercent = totalAmount ? (invoiceAmount / totalAmount * 100) : 0;
+          var invoiceRemainingPercent = totalAmount ? (invoiceRemaining / totalAmount * 100) : 0;
+          return '<tr>' +
+            '<td>' + escapeHTML(p.type || '') + '</td>' +
+            '<td>' + escapeHTML(p.factory || '未指定') + '</td>' +
+            '<td><span class="mono">' + escapeHTML(billNo) + '</span></td>' +
+            '<td>' +
+              '<div>总货款：' + escapeHTML(formatCurrency(totalAmount) || normalizeCurrency(p.amount)) + '</div>' +
+              '<div class="muted">已付款：' + escapeHTML(formatCurrency(paidAmount) || '￥0.00') + '（' + percent.toFixed(2) + '%）</div>' +
+              '<div class="muted">剩余待付：' + escapeHTML(formatCurrency(remainingAmount) || '￥0.00') + '（' + remainingPercent.toFixed(2) + '%）</div>' +
+            '</td>' +
+            '<td>' + escapeHTML(p.requester || '') + '</td>' +
+            '<td>' + escapeHTML(formatDate(p.dueDate) || '') + '</td>' +
+            '<td><span class="status ' + (p.paymentStatus === '已付款' ? 'done' : statusClass('待跟进', p.dueDate)) + '">' + escapeHTML(p.paymentStatus) + '</span></td>' +
+            '<td><span class="status ' + (p.invoiceStatus === '已开票' ? 'done' : (p.invoiceStatus === '部分开票' ? 'doing' : (p.invoiceStatus === '无需开票' ? 'idle' : 'pending'))) + '">' + escapeHTML(p.invoiceStatus) + '</span>' +
+              (p.invoiceStatus === '无需开票' ? '' :
+                '<div class="muted">已开票：' + escapeHTML(formatCurrency(invoiceAmount) || '￥0.00') + '（' + invoicePercent.toFixed(2) + '%）</div>' +
+                '<div class="muted">剩余待开：' + escapeHTML(formatCurrency(invoiceRemaining) || '￥0.00') + '（' + invoiceRemainingPercent.toFixed(2) + '%）</div>') + '</td>' +
+            '<td>' + escapeHTML(p.note || '') + flowHtml + invoiceFlowHtml + '</td>' +
+            '<td><div class="record-actions">' +
+            '<button data-finance-action="partialPay" data-payment-id="' + p.id + '">登记分批付款</button>' +
+            (p.invoiceStatus === '无需开票' ? '' : '<button data-finance-action="partialInvoice" data-payment-id="' + p.id + '">登记分批开票</button>') +
+            (p.invoiceStatus === '无需开票' ? '' : '<button data-finance-action="noInvoice" data-payment-id="' + p.id + '">标记无需开票</button>') +
+            '<button data-finance-action="delete" data-payment-id="' + p.id + '">删除</button>' +
+            '</div></td>' +
+            '</tr>';
+        }).join('');
+        panel.querySelectorAll('[data-finance-action]').forEach(function (btn) {
+          btn.addEventListener('click', onFinancePaymentAction);
+        });
+      });
+    });
+  }
+
+  // 【增量变更】缓存当前 scoped 列表供筛选事件使用
+  var scopedFinancePaymentsCache = [];
+
+  // 【增量变更】应用表格列筛选
+  function applyFinanceTableFilters(list) {
+    scopedFinancePaymentsCache = list.slice();
+    var f = financeTableFilters;
+    return list.filter(function (p) {
+      syncFinancePaymentPaidStatus(p);
+      syncFinancePaymentInvoiceStatus(p);
+      if (f.type && String(p.type || '').indexOf(f.type) < 0) return false;
+      if (f.factory && String(p.factory || '').indexOf(f.factory) < 0) return false;
+      if (f.orderNo && String(p.orderNo || p.kingdeeNo || '').indexOf(f.orderNo) < 0) return false;
+      if (f.requester && String(p.requester || '').indexOf(f.requester) < 0) return false;
+      if (f.dueDate && String(p.dueDate || '').indexOf(f.dueDate) < 0) return false;
+      if (f.note && String(p.note || '').indexOf(f.note) < 0) return false;
+      if (f.paymentStatus && p.paymentStatus !== f.paymentStatus) return false;
+      if (f.invoiceStatus && p.invoiceStatus !== f.invoiceStatus) return false;
+      // 金额范围筛选
+      var totalAmount = financePaymentTotalAmount(p);
+      var paidAmount = financePaymentPaidAmount(p);
+      var remaining = financePaymentRemainingAmount(p);
+      if (f.amountRange === 'unpaid' && !(remaining > 0)) return false;
+      if (f.amountRange === 'paid' && !(remaining === 0 && paidAmount > 0)) return false;
+      if (f.amountRange === 'partial' && !(paidAmount > 0 && remaining > 0)) return false;
+      // 付款比例筛选
+      if (f.payPercentRange) {
+        var payPercent = totalAmount ? (paidAmount / totalAmount * 100) : 0;
+        if (f.payPercentRange === '0' && !(payPercent === 0)) return false;
+        if (f.payPercentRange === '1-50' && !(payPercent >= 1 && payPercent <= 50)) return false;
+        if (f.payPercentRange === '51-99' && !(payPercent > 50 && payPercent < 100)) return false;
+        if (f.payPercentRange === '100' && !(payPercent >= 100)) return false;
+      }
+      // 已付金额筛选
+      if (f.paidAmountMin) {
+        var minPaid = parseNumberLike(f.paidAmountMin);
+        if (paidAmount < minPaid) return false;
+      }
+      // 开票比例筛选
+      if (f.invoicePercentRange) {
+        var invoiceAmount = financePaymentInvoicedAmount(p);
+        var invPercent = totalAmount ? (invoiceAmount / totalAmount * 100) : 0;
+        if (f.invoicePercentRange === '0' && !(invPercent === 0)) return false;
+        if (f.invoicePercentRange === '1-50' && !(invPercent >= 1 && invPercent <= 50)) return false;
+        if (f.invoicePercentRange === '51-99' && !(invPercent > 50 && invPercent < 100)) return false;
+        if (f.invoicePercentRange === '100' && !(invPercent >= 100)) return false;
+      }
+      // 已开金额筛选
+      if (f.invoicedAmountMin) {
+        var minInv = parseNumberLike(f.invoicedAmountMin);
+        if (financePaymentInvoicedAmount(p) < minInv) return false;
+      }
+      return true;
     });
   }
 
