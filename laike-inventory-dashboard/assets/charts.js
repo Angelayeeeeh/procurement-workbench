@@ -1,11 +1,12 @@
 (function() {
   var style = getComputedStyle(document.documentElement);
-  var accent = style.getPropertyValue('--accent').trim();
-  var accent2 = style.getPropertyValue('--accent2').trim();
   var ink = style.getPropertyValue('--ink').trim();
   var muted = style.getPropertyValue('--muted').trim();
   var rule = style.getPropertyValue('--rule').trim();
   var bg2 = style.getPropertyValue('--bg2').trim();
+
+  /* 【图表样式优化】统一柔和清爽配色，区分度高 */
+  var palette = ['#5B8DEF', '#37BC9B', '#F4A261', '#A78BFA', '#6EE7B7'];
 
   var statusChart = null;
   var categoryChart = null;
@@ -29,35 +30,68 @@
     statusChart = echarts.init(statusEl, null, { renderer: 'svg' });
     categoryChart = echarts.init(categoryEl, null, { renderer: 'svg' });
 
+    /* 订单状态分布 — 环形饼图 */
     statusChart.setOption({
       animation: false,
-      color: [accent, accent2, muted, accent + '99', accent2 + '99'],
-      tooltip: { trigger: 'item', appendToBody: true },
-      legend: { bottom: 0, textStyle: { color: muted } },
+      color: palette,
+      tooltip: { trigger: 'item', appendToBody: true, textStyle: { fontSize: 13 } },
+      legend: {
+        bottom: 0,
+        textStyle: { color: muted, fontSize: 12 },
+        itemWidth: 14,
+        itemHeight: 14,
+        itemGap: 16
+      },
       series: [{
         type: 'pie',
-        radius: ['48%', '72%'],
-        center: ['50%', '43%'],
+        radius: ['42%', '68%'],
+        center: ['50%', '42%'],
         data: sumByStatus(),
-        label: { color: ink, formatter: '{b}: {c}' },
+        label: {
+          color: ink,
+          fontSize: 12,
+          formatter: '{b}: {c}'
+        },
         itemStyle: { borderColor: bg2, borderWidth: 2 }
       }]
     });
 
+    /* 各品类工厂总订单、已发货与剩余 — 柱状图 */
     var data = window.LAIKE_DASHBOARD_DATA;
     var cats = data.categorySummary.map(function(d) { return d.品类; });
     categoryChart.setOption({
       animation: false,
-      color: [accent, accent2, muted],
-      tooltip: { trigger: 'axis', appendToBody: true },
-      legend: { top: 0, textStyle: { color: muted } },
-      grid: { left: 50, right: 18, top: 52, bottom: 36 },
-      xAxis: { type: 'category', data: cats, axisLabel: { color: muted }, axisLine: { lineStyle: { color: rule } } },
-      yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: rule } } },
+      color: palette,
+      tooltip: { trigger: 'axis', appendToBody: true, textStyle: { fontSize: 13 } },
+      legend: {
+        top: 0,
+        textStyle: { color: muted, fontSize: 12 },
+        itemWidth: 14,
+        itemHeight: 14,
+        itemGap: 14
+      },
+      grid: { left: 55, right: 20, top: 48, bottom: 68 },
+      xAxis: {
+        type: 'category',
+        data: cats,
+        axisLabel: {
+          color: ink,
+          fontSize: 11,
+          rotate: 30,
+          interval: 0
+        },
+        axisLine: { lineStyle: { color: rule } },
+        axisTick: { alignWithLabel: true }
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: muted, fontSize: 11 },
+        splitLine: { lineStyle: { color: rule, type: 'dashed' } }
+      },
       series: [
-        { name: '工厂总订单', type: 'bar', data: data.categorySummary.map(function(d) { return d.工厂总订单; }) },
-        { name: '已发货数量', type: 'bar', data: data.categorySummary.map(function(d) { return d.已发货数量; }) },
-        { name: '工厂剩余数量', type: 'bar', data: data.categorySummary.map(function(d) { return d.工厂剩余数量; }) }
+        { name: '工厂总订单', type: 'bar', barMaxWidth: 36, data: data.categorySummary.map(function(d) { return d.工厂总订单; }) },
+        { name: '已发货数量', type: 'bar', barMaxWidth: 36, data: data.categorySummary.map(function(d) { return d.已发货数量; }) },
+        { name: '工厂剩余数量', type: 'bar', barMaxWidth: 36, data: data.categorySummary.map(function(d) { return d.工厂剩余数量; }) }
       ]
     });
   }
