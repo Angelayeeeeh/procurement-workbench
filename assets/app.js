@@ -90,6 +90,13 @@
   var selectedOrderIds = [];
   var pendingPurchaseOrderImport = null;
   var pendingPdfPurchaseOrderImport = null;
+  // 【库存汇总迭代新增】汇总查询视图状态
+  var inventorySummaryMode = 'gy'; // 'gy' 或 'order'
+  var inventorySummaryGyFilter = '';
+  var inventorySummaryOrderFilter = '';
+  // 【增量变更】采购订单预览页防伪标扣减比例下拉选择（临时状态，预览时使用）
+  var previewAntifakeRatio = null;
+  var previewAntifakeRatioOptions = ['1:1', '4:1'];
   ensureStateShape();
   syncFactories();
 
@@ -387,6 +394,8 @@
     state.antifakeThresholds = state.antifakeThresholds && typeof state.antifakeThresholds === 'object' ? state.antifakeThresholds : {};
     state.antifakeExempt = state.antifakeExempt && typeof state.antifakeExempt === 'object' ? state.antifakeExempt : {};
     state.antifakeExemptNote = state.antifakeExemptNote && typeof state.antifakeExemptNote === 'object' ? state.antifakeExemptNote : {};
+    // 【防伪标迭代新增】防伪标使用记录数组（仅采购订单自动扣减生成）
+    state.antifakeUsageRecords = Array.isArray(state.antifakeUsageRecords) ? state.antifakeUsageRecords : [];
     state.settlementFlows.forEach(function (flow) {
       flow.reconciliationStatus = flow.reconciliationStatus || '待对账';
       flow.orderStatus = flow.orderStatus || '待做采购单';
@@ -481,6 +490,11 @@
       if (supplier.name && !state.factoryInventory[supplier.name]) {
         state.factoryInventory[supplier.name] = {};
       }
+      // 【防伪标迭代新增】供应商防伪标扣减比例（默认1表示1:1）和特殊工厂标记
+      if (typeof supplier.antifakeRatio !== 'number') supplier.antifakeRatio = 1;
+      if (typeof supplier.isSpecialFactory !== 'boolean') supplier.isSpecialFactory = false;
+      // 江西和润宇电源科技有限公司默认为特殊工厂
+      if (supplier.name === '江西和润宇电源科技有限公司') supplier.isSpecialFactory = true;
     });
   }
 
@@ -697,6 +711,7 @@
             c.classList.toggle('active', c.getAttribute('data-antifake-subtab-content') === target);
           });
           if (target === 'stock' || target === 'ledger') renderAntifakePanel();
+          if (target === 'usage') renderAntifakeUsageRecords();
         });
       });
       var toggleBtn = $('antifakeSubtabToggle');
@@ -1148,12 +1163,14 @@
   }
 
   function renderInventoryFactoryDirectoryHTML() {
-    var cards = state.suppliers.map(function (supplier) {
+    // 【增量变更】删除莱克重复条目，仅保留山东莱克科技有限公司
+    var visibleSuppliers = state.suppliers.filter(function (s) { return s.name !== '莱克'; });
+    var cards = visibleSuppliers.map(function (supplier) {
       var factory = supplier.name;
       var stocks = factoryInventoryStockRows(factory);
       var totalQty = stocks.reduce(function (sum, item) { return sum + Number(item.库存数量 || 0); }, 0);
       var latest = factoryLatestInventoryMovement(factory);
-      var laikeLink = (factory === '莱克' || factory === '山东莱克科技有限公司')
+      var laikeLink = (factory === '山东莱克科技有限公司')
         ? '<a class="btn primary" href="./laike-inventory-dashboard/laike-inventory-dashboard.html" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px;padding:6px 10px;min-height:auto;">莱克专属库存</a>'
         : '';
       return '<div class="factory-card" data-inventory-factory-card="' + escapeHTML(factory) + '"><div><h4>' + escapeHTML(factory) + '</h4>' +
@@ -1169,7 +1186,216 @@
       '<span class="pill">点击工厂卡片进入库存</span>' +
       '<span class="pill">按 GY 号统计库存</span>' +
       '<span class="pill">扣减后自动保存</span>' +
-      '</div><div class="grid cols-3">' + cards + '</div>';
+      '</div><div class="grid cols-3">' + cards + '</div>' +
+      renderInventorySummaryHTML();
+  }
+
+  // 【库存汇总迭代新增】判断是否为莱克专属库存工厂（汇总时排除）
+  function isLaikeDedicatedFactory(factory) {
+    return factory === '莱克' || factory === '山东莱克科技有限公司';
+  }
+
+  // 【库存汇总迭代新增】渲染库存汇总板块 HTML
+  function renderInventorySummaryHTML() {
+    return '<div class="card" style="margin-top:18px;box-shadow:none;border:1px solid var(--line);">' +
+      '<div class="card-header">' +
+      '<h3>库存汇总查询</h3>' +
+      '<span>统计数据已自动排除莱克专属库存，不纳入汇总计算</span>' +
+      '</div>' +
+      '<div class="card-body">' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">' +
+      '<div style="flex:1;min-width:200px;">' +
+      '<label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">GY号（模糊检索）</label>' +
+      '<input type="text" id="inventorySummaryGyInput" placeholder="输入GY号关键词…" value="' + escapeHTML(inventorySummaryGyFilter) + '" ' +
+      'style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font:inherit;color:var(--text);background:#fff;">' +
+      '</div>' +
+      '<div style="flex:1;min-width:200px;">' +
+      '<label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">订单号（模糊检索）</label>' +
+      '<input type="text" id="inventorySummaryOrderInput" placeholder="输入订单号关键词…" value="' + escapeHTML(inventorySummaryOrderFilter) + '" ' +
+      'style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font:inherit;color:var(--text);background:#fff;">' +
+      '</div>' +
+      '<button class="btn primary" id="inventorySummarySearchBtn" type="button" style="margin-top:18px;">查询</button>' +
+      '<button class="btn" id="inventorySummaryClearBtn" type="button" style="margin-top:18px;">清除</button>' +
+      '</div>' +
+      '<div class="antifake-subtabs" id="inventorySummaryTabs" style="margin-bottom:12px;">' +
+      '<button class="antifake-subtab-btn' + (inventorySummaryMode === 'gy' ? ' active' : '') + '" data-inventory-summary-tab="gy" type="button">按 GY 号汇总</button>' +
+      '<button class="antifake-subtab-btn' + (inventorySummaryMode === 'order' ? ' active' : '') + '" data-inventory-summary-tab="order" type="button">按 订单号 汇总</button>' +
+      '</div>' +
+      '<div id="inventorySummaryContent">' + renderInventorySummaryTableHTML() + '</div>' +
+      '</div>' +
+      '</div>';
+  }
+
+  // 【库存汇总迭代新增】计算汇总数据（排除莱克专属库存）
+  function computeInventorySummaryData() {
+    var inventory = state.factoryInventory || {};
+    var gyMap = {};   // { gy: { gy, productNames, factories, totalQty, factoryList } }
+    var orderMap = {}; // { orderNo: { orderNo, items: [...] } }
+    var gyFilterLower = inventorySummaryGyFilter.toLowerCase().trim();
+    var orderFilterLower = inventorySummaryOrderFilter.toLowerCase().trim();
+
+    Object.keys(inventory).forEach(function (factoryName) {
+      // 排除莱克专属库存
+      if (isLaikeDedicatedFactory(factoryName)) return;
+      var factoryStock = inventory[factoryName] || {};
+      Object.keys(factoryStock).forEach(function (gy) {
+        var item = factoryStock[gy] || {};
+        var gyModel = item.gyModel || gy;
+        var qty = Number(item.qty || 0);
+        var productName = item.productName || '';
+        var orderNo = item.orderNo || '';
+
+        // GY号汇总
+        if (!gyMap[gyModel]) {
+          gyMap[gyModel] = { gy: gyModel, productNames: {}, factories: {}, totalQty: 0 };
+        }
+        gyMap[gyModel].totalQty += qty;
+        if (productName) gyMap[gyModel].productNames[productName] = true;
+        if (!gyMap[gyModel].factories[factoryName]) gyMap[gyModel].factories[factoryName] = 0;
+        gyMap[gyModel].factories[factoryName] += qty;
+
+        // 订单号汇总
+        if (orderNo) {
+          if (!orderMap[orderNo]) {
+            orderMap[orderNo] = { orderNo: orderNo, items: [] };
+          }
+          orderMap[orderNo].items.push({
+            factory: factoryName,
+            gy: gyModel,
+            productName: productName,
+            qty: qty
+          });
+        }
+      });
+    });
+
+    // 应用筛选
+    var gyList = Object.keys(gyMap).map(function (k) { return gyMap[k]; }).filter(function (row) {
+      if (gyFilterLower && row.gy.toLowerCase().indexOf(gyFilterLower) < 0) return false;
+      return true;
+    }).sort(function (a, b) { return b.totalQty - a.totalQty; });
+
+    var orderList = Object.keys(orderMap).map(function (k) { return orderMap[k]; }).filter(function (row) {
+      if (orderFilterLower && row.orderNo.toLowerCase().indexOf(orderFilterLower) < 0) return false;
+      return true;
+    }).map(function (row) {
+      var totalQty = row.items.reduce(function (s, i) { return s + Number(i.qty || 0); }, 0);
+      var factorySet = {};
+      row.items.forEach(function (i) { factorySet[i.factory] = true; });
+      return {
+        orderNo: row.orderNo,
+        factories: Object.keys(factorySet).join('、'),
+        gyCount: row.items.length,
+        totalQty: totalQty,
+        items: row.items
+      };
+    }).sort(function (a, b) { return b.totalQty - a.totalQty; });
+
+    return { gyList: gyList, orderList: orderList };
+  }
+
+  // 【库存汇总迭代新增】渲染汇总表格 HTML
+  function renderInventorySummaryTableHTML() {
+    var data = computeInventorySummaryData();
+    var gyList = data.gyList;
+    var orderList = data.orderList;
+
+    // 统计概览
+    var gyTotalQty = gyList.reduce(function (s, r) { return s + r.totalQty; }, 0);
+    var orderTotalQty = orderList.reduce(function (s, r) { return s + r.totalQty; }, 0);
+
+    if (inventorySummaryMode === 'gy') {
+      var gyRows = gyList.length ? gyList.map(function (row) {
+        var factoryList = Object.keys(row.factories).map(function (f) {
+          return escapeHTML(f) + '（' + row.factories[f] + '）';
+        }).join('、');
+        var productNames = Object.keys(row.productNames).join('、');
+        return '<tr>' +
+          '<td class="mono" style="font-weight:600;">' + escapeHTML(row.gy) + '</td>' +
+          '<td>' + escapeHTML(productNames || '—') + '</td>' +
+          '<td>' + factoryList + '</td>' +
+          '<td class="num" style="color:var(--accent);font-weight:700;font-size:16px;">' + row.totalQty + '</td>' +
+          '</tr>';
+      }).join('') : '<tr><td colspan="4" class="empty">暂无符合条件的 GY 号库存数据</td></tr>';
+
+      return '<div class="pill-row" style="margin-bottom:10px;">' +
+        '<span class="pill">GY 号汇总：' + gyList.length + ' 个型号</span>' +
+        '<span class="pill" style="background:var(--accent-soft);color:var(--accent);">剩余总库存：' + gyTotalQty + ' 件</span>' +
+        '</div>' +
+        '<div class="table-wrap" style="max-height:420px;"><table>' +
+        '<thead><tr><th>GY号</th><th>品名</th><th>涉及工厂（库存数）</th><th>剩余总库存</th></tr></thead>' +
+        '<tbody>' + gyRows + '</tbody></table></div>';
+    } else {
+      var orderRows = orderList.length ? orderList.map(function (row) {
+        var detailItems = row.items.map(function (i) {
+          return escapeHTML(i.gy) + '：' + i.qty + '件' + (i.factory ? '（' + escapeHTML(i.factory) + '）' : '');
+        }).join('；');
+        return '<tr>' +
+          '<td class="mono" style="font-weight:600;">' + escapeHTML(row.orderNo) + '</td>' +
+          '<td>' + escapeHTML(row.factories || '—') + '</td>' +
+          '<td class="num">' + row.gyCount + '</td>' +
+          '<td class="num" style="color:var(--accent);font-weight:700;font-size:16px;">' + row.totalQty + '</td>' +
+          '<td style="font-size:12px;color:var(--muted);max-width:360px;">' + escapeHTML(detailItems || '—') + '</td>' +
+          '</tr>';
+      }).join('') : '<tr><td colspan="5" class="empty">暂无符合条件的订单号库存数据</td></tr>';
+
+      return '<div class="pill-row" style="margin-bottom:10px;">' +
+        '<span class="pill">订单号汇总：' + orderList.length + ' 笔订单</span>' +
+        '<span class="pill" style="background:var(--accent-soft);color:var(--accent);">剩余总库存：' + orderTotalQty + ' 件</span>' +
+        '</div>' +
+        '<div class="table-wrap" style="max-height:420px;"><table>' +
+        '<thead><tr><th>订单号</th><th>工厂</th><th>型号数</th><th>剩余总库存</th><th>明细</th></tr></thead>' +
+        '<tbody>' + orderRows + '</tbody></table></div>';
+    }
+  }
+
+  // 【库存汇总迭代新增】绑定汇总板块事件
+  function bindInventorySummaryControls() {
+    var gyInput = $('inventorySummaryGyInput');
+    var orderInput = $('inventorySummaryOrderInput');
+    var searchBtn = $('inventorySummarySearchBtn');
+    var clearBtn = $('inventorySummaryClearBtn');
+
+    if (searchBtn) {
+      searchBtn.addEventListener('click', function () {
+        inventorySummaryGyFilter = gyInput ? gyInput.value.trim() : '';
+        inventorySummaryOrderFilter = orderInput ? orderInput.value.trim() : '';
+        var content = $('inventorySummaryContent');
+        if (content) content.innerHTML = renderInventorySummaryTableHTML();
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function () {
+        inventorySummaryGyFilter = '';
+        inventorySummaryOrderFilter = '';
+        if (gyInput) gyInput.value = '';
+        if (orderInput) orderInput.value = '';
+        var content = $('inventorySummaryContent');
+        if (content) content.innerHTML = renderInventorySummaryTableHTML();
+      });
+    }
+    // 回车触发查询
+    if (gyInput) {
+      gyInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && searchBtn) searchBtn.click();
+      });
+    }
+    if (orderInput) {
+      orderInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && searchBtn) searchBtn.click();
+      });
+    }
+    // Tab 切换
+    document.querySelectorAll('[data-inventory-summary-tab]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        inventorySummaryMode = btn.getAttribute('data-inventory-summary-tab') || 'gy';
+        document.querySelectorAll('[data-inventory-summary-tab]').forEach(function (b) {
+          b.classList.toggle('active', b === btn);
+        });
+        var content = $('inventorySummaryContent');
+        if (content) content.innerHTML = renderInventorySummaryTableHTML();
+      });
+    });
   }
 
   function bindInventoryFactoryDirectory() {
@@ -1181,6 +1407,8 @@
         renderFactoryInventoryPanel();
       });
     });
+    // 【库存汇总迭代新增】绑定汇总板块事件
+    bindInventorySummaryControls();
   }
 
   function ensureXLSXLibrary(cb) {
@@ -1745,6 +1973,10 @@
       var exempt = !!state.antifakeExempt[factory];
       var exemptNote = state.antifakeExemptNote[factory] || '';
       var low = !exempt && qty < threshold;
+      // 【防伪标迭代新增】读取工厂防伪标扣减比例和特殊工厂标记
+      var supplier = state.suppliers.find(function (s) { return s.name === factory; });
+      var antifakeRatio = supplier && typeof supplier.antifakeRatio === 'number' ? supplier.antifakeRatio : 1;
+      var isSpecial = supplier && supplier.isSpecialFactory;
 
       // 计算寄出累计（send + initial）和扣减累计（use + damage + return）
       var sentTotal = 0;
@@ -1764,7 +1996,7 @@
         ? '无需寄标' + (exemptNote ? '（' + escapeHTML(exemptNote) + '）' : '')
         : (low ? '红灯：低于 ' + threshold + '，需补充' : '库存正常');
       return '<div class="stock-card ' + cardClass + '" data-factory="' + escapeHTML(factory) + '">' +
-        '<h4>' + escapeHTML(factory) + '</h4>' +
+        '<h4>' + escapeHTML(factory) + (isSpecial ? ' <span class="pill warn" style="font-size:11px;">特殊工厂</span>' : '') + '</h4>' +
         '<div class="stock-summary">' +
         '<div class="stock-item"><span class="label">寄出累计</span><span class="value">' + sentTotal + '</span></div>' +
         '<div class="stock-item"><span class="label">扣减累计</span><span class="value">' + deductedTotal + '</span></div>' +
@@ -1773,8 +2005,14 @@
         '<div class="stock-light">' + statusText + '</div>' +
         '<div class="threshold-field"><label>预警阈值</label>' +
         '<input type="number" min="0" value="' + threshold + '" data-threshold-factory="' + escapeHTML(factory) + '" class="threshold-input"' + (exempt ? ' disabled' : '') + '></div>' +
+        '<div class="threshold-field"><label>防伪标扣减比例</label>' +
+        '<input type="number" min="0" step="0.1" value="' + antifakeRatio + '" data-ratio-factory="' + escapeHTML(factory) + '" class="threshold-input" placeholder="1表示1:1，0.25表示4:1">' +
+        '<small style="color:var(--muted);font-size:11px;">1=1:1，0.25=4:1（4件产品扣1个标）</small></div>' +
         '<div class="exempt-field">' +
         '<label class="exempt-toggle"><input type="checkbox" data-exempt-factory="' + escapeHTML(factory) + '"' + (exempt ? ' checked' : '') + '> 无需寄标</label>' +
+        '</div>' +
+        '<div class="exempt-field">' +
+        '<label class="exempt-toggle"><input type="checkbox" data-special-factory="' + escapeHTML(factory) + '"' + (isSpecial ? ' checked' : '') + '> 特殊工厂（跳过库存和付款）</label>' +
         '</div>' +
         '<div class="exempt-note-field"' + (exempt ? '' : ' style="display:none;"') + '>' +
         '<input type="text" placeholder="填写备注（如已停止合作）" value="' + escapeHTML(exemptNote) + '" data-exempt-note="' + escapeHTML(factory) + '" class="exempt-note-input">' +
@@ -1786,7 +2024,7 @@
     panel.querySelectorAll('[data-factory]').forEach(function (card) {
       card.addEventListener('click', function (e) {
         // 如果点击的是输入框或勾选框，不触发筛选
-        if (e.target.closest('.threshold-field, .exempt-field, .exempt-note-field')) return;
+        if (e.target.closest('.threshold-field, .exempt-field, .exempt-note-field, .ratio-field')) return;
         var factoryName = card.getAttribute('data-factory');
         selectedAntifakeFactory = selectedAntifakeFactory === factoryName ? '' : factoryName;
         renderAntifakePanel();
@@ -1823,6 +2061,74 @@
         saveState();
       });
     });
+    // 【防伪标迭代新增】防伪标扣减比例变更
+    panel.querySelectorAll('[data-ratio-factory]').forEach(function (input) {
+      input.addEventListener('change', function () {
+        var factoryName = input.getAttribute('data-ratio-factory');
+        var val = Number(input.value);
+        if (isNaN(val) || val < 0) val = 1;
+        var supplier = state.suppliers.find(function (s) { return s.name === factoryName; });
+        if (supplier) {
+          supplier.antifakeRatio = val;
+          saveState();
+          toast('已设置「' + factoryName + '」防伪标扣减比例为 1:' + val);
+        }
+      });
+    });
+    // 【防伪标迭代新增】特殊工厂复选框变更
+    panel.querySelectorAll('[data-special-factory]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var factoryName = cb.getAttribute('data-special-factory');
+        var supplier = state.suppliers.find(function (s) { return s.name === factoryName; });
+        if (supplier) {
+          supplier.isSpecialFactory = cb.checked;
+          saveState();
+          toast(cb.checked ? '已设置「' + factoryName + '」为特殊工厂' : '已取消「' + factoryName + '」特殊工厂标记');
+        }
+      });
+    });
+  }
+
+  // 【防伪标迭代新增】防伪标使用记录渲染函数
+  function renderAntifakeUsageRecords() {
+    var statsEl = $('antifakeUsageStats');
+    var bodyEl = $('antifakeUsageTableBody');
+    if (!bodyEl) return;
+    var records = state.antifakeUsageRecords || [];
+    var totalDeduction = records.reduce(function (s, r) { return s + Number(r.deductionQty || 0); }, 0);
+    var totalOrderQty = records.reduce(function (s, r) { return s + Number(r.orderQty || 0); }, 0);
+    var factories = {};
+    records.forEach(function (r) { factories[r.factory] = (factories[r.factory] || 0) + 1; });
+    var factoryCount = Object.keys(factories).length;
+    if (statsEl) {
+      statsEl.innerHTML =
+        '<span class="pill">使用记录：' + records.length + ' 条</span>' +
+        '<span class="pill" style="background:var(--accent-soft);color:var(--accent);">累计扣减：' + totalDeduction + ' 个</span>' +
+        '<span class="pill">累计订单数量：' + totalOrderQty + ' 件</span>' +
+        '<span class="pill">涉及工厂：' + factoryCount + ' 家</span>';
+    }
+    if (!records.length) {
+      bodyEl.innerHTML = '<tr><td colspan="7" class="empty">暂无防伪标使用记录。采购订单上传确认后将自动生成。</td></tr>';
+      return;
+    }
+    bodyEl.innerHTML = records.map(function (r) {
+      return '<tr>' +
+        '<td class="mono">' + escapeHTML(r.orderNo || '') + '</td>' +
+        '<td>' + escapeHTML(formatDateTime(r.createdAt)) + '</td>' +
+        '<td>' + escapeHTML(r.factory || '') + '</td>' +
+        '<td>' + escapeHTML(r.ratio || '') + '</td>' +
+        '<td class="num" style="color:var(--accent);font-weight:700;">' + escapeHTML(String(r.deductionQty || 0)) + '</td>' +
+        '<td class="num">' + escapeHTML(String(r.orderQty || 0)) + '</td>' +
+        '<td>' + escapeHTML(r.fileName || '') + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function formatDateTime(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   }
 
   function renderAntifakeMovementTable() {
@@ -4023,8 +4329,13 @@
       base.setDate(base.getDate() + serial);
       return toYMD(base);
     }
+    // 【增量变更】兼容 yyyy/m/d 斜杠日期格式（例：2026/6/20），同时兼容带时间后缀和 Date.toString() 格式
     var m = text.match(/(\d{4})[\/\-.年](\d{1,2})[\/\-.月](\d{1,2})/);
     if (m) return m[1] + '-' + pad(Number(m[2])) + '-' + pad(Number(m[3]));
+    // 兼容 Date.toString() 输出格式（如 "Sat Jun 20 2026 00:00:00 GMT+0800"）
+    var monthMap = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
+    var dm = text.match(/\w{3}\s+(\w{3})\s+(\d{1,2})\s+(\d{4})/);
+    if (dm && monthMap[dm[1]]) return dm[3] + '-' + pad(monthMap[dm[1]]) + '-' + pad(Number(dm[2]));
     return '';
   }
 
@@ -4195,9 +4506,20 @@
       (function () {
         var factory = single.supplier || '';
         var isExempt = factory && state.antifakeExempt[factory];
+        // 【增量变更】读取工厂预设防伪标扣减比例
+        var factorySupplier = state.suppliers.find(function (s) { return s.name === factory; });
+        var factoryRatio = factorySupplier && typeof factorySupplier.antifakeRatio === 'number' ? factorySupplier.antifakeRatio : 1;
+        var isSpecial = factorySupplier && factorySupplier.isSpecialFactory;
         var ratioInput = $('antifakeUseRatio');
         var ratioStr = ratioInput ? ratioInput.value : '1:1';
-        var ratio = parseAntifakeRatio(ratioStr);
+        var ratio = factoryRatio;
+        var ratioDisplay = ratioToDisplay(factoryRatio);
+        if (!factorySupplier || typeof factorySupplier.antifakeRatio !== 'number' || factorySupplier.antifakeRatio === 1) {
+          ratio = parseAntifakeRatio(ratioStr);
+          ratioDisplay = ratioStr;
+        }
+        // 【增量变更】将初始比例存入预览状态
+        previewAntifakeRatio = ratio;
         var totalQty = Number(single.qty || 0);
         var deduction = ratio && totalQty ? Math.ceil(totalQty * ratio) : 0;
         var currentStock = factory ? Number(state.antifakeStock[factory] || 0) : 0;
@@ -4211,13 +4533,32 @@
         if (!ratio) {
           return '<div class="feedback-item" style="margin-top:10px;color:var(--danger);">防伪标扣减：使用比例格式无效，请修改后再确认</div>';
         }
+        var specialHint = isSpecial
+          ? '<div class="feedback-item" style="margin-top:6px;color:var(--warning);">⚠ 特殊工厂规则：将跳过工厂库存入库和财务待付款，订单状态标记为无需付款，仅扣减防伪标并生成使用记录</div>'
+          : '';
+        // 【增量变更】构建下拉选择框选项
+        var currentDisplay = ratioToDisplay(ratio);
+        var allOptions = previewAntifakeRatioOptions.slice();
+        if (allOptions.indexOf(currentDisplay) < 0) allOptions.push(currentDisplay);
+        var ratioOptions = allOptions.map(function (opt) {
+          return '<option value="' + escapeHTML(opt) + '"' + (opt === currentDisplay ? ' selected' : '') + '>' + escapeHTML(opt) + '</option>';
+        }).join('');
         return '<div class="feedback-item" style="margin-top:10px;">防伪标自动扣减预览：工厂 ' + escapeHTML(factory) +
-          ' · 使用比例 ' + escapeHTML(ratioStr) +
+          ' · 使用比例 <strong id="antifakePreviewRatioText">' + escapeHTML(ratioDisplay) + '</strong>' +
           ' · 订单数量 ' + totalQty +
           ' · 预计扣减 ' + deduction + ' 个' +
           ' · 当前余量 ' + currentStock +
           ' · 扣减后余量 ' + Math.max(0, afterStock) +
-          (afterStock < 0 ? '（余量不足！）' : '') + '</div>';
+          (afterStock < 0 ? '（余量不足！）' : '') + '</div>' +
+          '<div class="po-summary-grid" style="margin-top:8px;">' +
+          '<div class="po-summary-card"><span>防伪标扣减比例</span>' +
+          '<div style="display:flex;gap:6px;align-items:center;margin-top:4px;">' +
+          '<select id="antifakeRatioSelect" style="font-size:16px;font-weight:700;color:var(--accent);border:1px solid var(--line);border-radius:8px;padding:4px 8px;background:#fff;">' + ratioOptions + '</select>' +
+          '<button class="btn" id="antifakeRatioAddBtn" type="button" style="font-size:12px;padding:4px 10px;min-height:auto;white-space:nowrap;">新增扣减比例</button>' +
+          '</div></div>' +
+          '<div class="po-summary-card"><span>本次防伪标扣减数量</span><strong id="antifakeDeductionDisplay" style="font-size:18px;color:var(--accent);">' + deduction + ' 个</strong></div>' +
+          '<div class="po-summary-card"><span>扣减后防伪标剩余库存</span><strong id="antifakeAfterStockDisplay" style="font-size:18px;color:' + (afterStock < 0 ? 'var(--danger)' : 'var(--good)') + ';">' + Math.max(0, afterStock) + ' 个</strong></div>' +
+          '</div>' + specialHint;
       })() +
       '<div class="record-actions" style="margin-top:12px;">' +
       '<button class="btn primary" id="confirmPurchaseOrderImportBtn" type="button">确认识别并进入流转</button>' +
@@ -4227,9 +4568,41 @@
     $('confirmPurchaseOrderImportBtn').addEventListener('click', confirmPurchaseOrderImport);
     $('cancelPurchaseOrderImportBtn').addEventListener('click', function () {
       pendingPurchaseOrderImport = null;
+      previewAntifakeRatio = null;
       el.style.display = 'none';
       el.innerHTML = '';
     });
+    // 【增量变更】绑定防伪标扣减比例下拉框事件
+    var ratioSelect = $('antifakeRatioSelect');
+    var ratioAddBtn = $('antifakeRatioAddBtn');
+    if (ratioSelect) {
+      ratioSelect.addEventListener('change', function () {
+        previewAntifakeRatio = parseAntifakeRatio(ratioSelect.value);
+        updateAntifakePreviewCalc();
+      });
+    }
+    if (ratioAddBtn) {
+      ratioAddBtn.addEventListener('click', function () {
+        var custom = window.prompt('请输入自定义扣减比例（格式如 3:1、5:1、2:1）');
+        if (!custom) return;
+        var parsed = parseAntifakeRatio(custom);
+        if (!parsed || parsed <= 0) { toast('比例格式无效，请使用如 3:1 的格式'); return; }
+        var display = ratioToDisplay(parsed);
+        if (previewAntifakeRatioOptions.indexOf(display) < 0) previewAntifakeRatioOptions.push(display);
+        if (ratioSelect) {
+          var exists = Array.prototype.some.call(ratioSelect.options, function (opt) { return opt.value === display; });
+          if (!exists) {
+            var newOpt = document.createElement('option');
+            newOpt.value = display;
+            newOpt.textContent = display;
+            ratioSelect.appendChild(newOpt);
+          }
+          ratioSelect.value = display;
+        }
+        previewAntifakeRatio = parsed;
+        updateAntifakePreviewCalc();
+      });
+    }
   }
 
   function purchasePreviewInput(attrs, value, label) {
@@ -4359,9 +4732,22 @@
       }, true);
       addedOrders++;
     }
-    var updatedInventory = applyPurchaseOrderInventoryReceipt(group, record, parsed.fileName);
+    // 【防伪标迭代新增】特殊工厂分支判断
+    var importSupplier = state.suppliers.find(function (s) { return s.name === group.supplier; });
+    var isSpecial = importSupplier && importSupplier.isSpecialFactory;
+    var updatedInventory = 0;
     var antifakeResult = applyAntifakeOrderDeduction(group, parsed.fileName);
-    if (upsertPurchaseOrderPayment(group, record, amount, parsed.fileName)) updatedPayments++;
+    if (isSpecial) {
+      // 分支B：特殊工厂 — 跳过库存入库和财务待付款，订单标记无需付款
+      record.status = '无需付款';
+      record.nextStep = '特殊工厂采购订单，无需付款，仅扣减防伪标';
+      record.note = (record.note || '') + ' | 特殊工厂规则：跳过工厂库存入库和财务待付款';
+      record.updatedAt = nowISO();
+    } else {
+      // 分支A：普通工厂 — 执行库存入库和财务待付款
+      updatedInventory = applyPurchaseOrderInventoryReceipt(group, record, parsed.fileName);
+      if (upsertPurchaseOrderPayment(group, record, amount, parsed.fileName)) updatedPayments++;
+    }
     syncEmailOrderFactory(group.orderNo, group.supplier);
     // 【合同迭代新增】采购订单确认后自动填充智能邮箱的订单号和供应商名称
     autoFillEmailFromOrder(group.orderNo, group.supplier);
@@ -4369,11 +4755,14 @@
     renderSelects();
     renderAll();
     pendingPurchaseOrderImport = null;
+    previewAntifakeRatio = null;
     if ($('purchaseOrderUploadPreview')) $('purchaseOrderUploadPreview').style.display = 'none';
     switchSection('finance');
     var panel = $('financePaymentPanel');
     if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    var toastMsg = '已完成采购单识别并进入流转：库存入库 ' + updatedInventory + ' 行，财务待付款 ' + updatedPayments + ' 笔';
+    var toastMsg = isSpecial
+      ? '已完成特殊工厂采购单识别：' + group.supplier + '（无需付款），库存无变动'
+      : '已完成采购单识别并进入流转：库存入库 ' + updatedInventory + ' 行，财务待付款 ' + updatedPayments + ' 笔';
     if (antifakeResult && !antifakeResult.skipped) {
       toastMsg += '；防伪标自动扣减 ' + antifakeResult.factory + '：' + antifakeResult.deducted + ' 个（比例 ' + antifakeResult.ratio + '，剩余 ' + antifakeResult.after + '）';
     } else if (antifakeResult && antifakeResult.skipped && antifakeResult.factory) {
@@ -4525,6 +4914,15 @@
       createdAt: nowISO(),
       note: (reason || '库存扣减') + '，扣减前库存：' + before + '，本次扣减：' + actual + '，扣减后库存：' + stock.qty
     });
+    // 【库存汇总迭代新增】库存扣减操作日志留存
+    state.operationLogs = state.operationLogs || [];
+    state.operationLogs.unshift({
+      time: nowISO(),
+      action: '工厂库存手动扣减',
+      detail: factory + ' / GY号 ' + gyModel + ' / 扣减前 ' + before + ' / 本次扣减 ' + actual + ' / 扣减后 ' + stock.qty + (orderNo ? ' / 订单 ' + orderNo : ''),
+      factory: factory
+    });
+    state.operationLogs = state.operationLogs.slice(0, 300);
     if (!silent) {
       saveState();
       renderFactoryInventoryPanel();
@@ -5119,6 +5517,36 @@
     return record;
   }
 
+  // 【增量变更】将比例数值转为展示格式（1→"1:1"，0.25→"4:1"）
+  function ratioToDisplay(ratio) {
+    if (ratio === 1) return '1:1';
+    var inverse = 1 / ratio;
+    if (Math.abs(inverse - Math.round(inverse)) < 0.001) return Math.round(inverse) + ':1';
+    return '1:' + ratio;
+  }
+
+  // 【增量变更】实时重算防伪标预览扣减数量和剩余库存
+  function updateAntifakePreviewCalc() {
+    var parsed = pendingPurchaseOrderImport;
+    if (!parsed || !parsed.singleOrder) return;
+    var single = parsed.singleOrder;
+    var factory = single.supplier || '';
+    var ratio = previewAntifakeRatio;
+    var totalQty = Number(single.qty || 0);
+    var deduction = ratio && totalQty ? Math.ceil(totalQty * ratio) : 0;
+    var currentStock = factory ? Number(state.antifakeStock[factory] || 0) : 0;
+    var afterStock = currentStock - deduction;
+    var ratioTextEl = $('antifakePreviewRatioText');
+    if (ratioTextEl) ratioTextEl.textContent = ratio ? ratioToDisplay(ratio) : '—';
+    var deductionEl = $('antifakeDeductionDisplay');
+    if (deductionEl) deductionEl.textContent = deduction + ' 个';
+    var afterStockEl = $('antifakeAfterStockDisplay');
+    if (afterStockEl) {
+      afterStockEl.textContent = Math.max(0, afterStock) + ' 个';
+      afterStockEl.style.color = afterStock < 0 ? 'var(--danger)' : 'var(--good)';
+    }
+  }
+
   function parseAntifakeRatio(str) {
     if (!str) return null;
     var text = String(str).trim();
@@ -5143,9 +5571,23 @@
     if (state.antifakeExempt[factory]) {
       return { factory: factory, deducted: 0, skipped: true, reason: '该工厂已标记无需寄标' };
     }
+    // 【增量变更】优先使用预览页下拉选择的扣减比例，其次工厂配置，最后全局输入框
+    var supplier = state.suppliers.find(function (s) { return s.name === factory; });
+    var factoryRatio = supplier && typeof supplier.antifakeRatio === 'number' ? supplier.antifakeRatio : 1;
     var ratioInput = $('antifakeUseRatio');
     var ratioStr = ratioInput ? ratioInput.value : '1:1';
-    var ratio = parseAntifakeRatio(ratioStr);
+    var ratio = factoryRatio;
+    var ratioDisplay = ratioToDisplay(factoryRatio);
+    // 若工厂未配置专属比例（默认1），则回退到全局输入框
+    if (!supplier || typeof supplier.antifakeRatio !== 'number' || supplier.antifakeRatio === 1) {
+      ratio = parseAntifakeRatio(ratioStr);
+      ratioDisplay = ratioStr;
+    }
+    // 【增量变更】若预览页下拉选择了比例，优先使用
+    if (previewAntifakeRatio && previewAntifakeRatio > 0) {
+      ratio = previewAntifakeRatio;
+      ratioDisplay = ratioToDisplay(ratio);
+    }
     if (!ratio || ratio <= 0) {
       return { factory: factory, deducted: 0, skipped: true, reason: '防伪标使用比例格式无效' };
     }
@@ -5170,7 +5612,7 @@
       factory: factory,
       qty: actualDeducted,
       date: toYMD(today()),
-      note: '采购订单自动扣减 · 使用比例 ' + ratioStr + ' · 订单数量 ' + totalQty + ' · 来源文件 ' + (fileName || ''),
+      note: '采购订单自动扣减 · 使用比例 ' + ratioDisplay + ' · 订单数量 ' + totalQty + ' · 来源文件 ' + (fileName || ''),
       orderNo: group.orderNo || '',
       orderQty: totalQty,
       category: '',
@@ -5179,14 +5621,26 @@
       createdAt: nowISO()
     };
     state.antifakeMovements.unshift(record);
+    // 【防伪标迭代新增】同步写入防伪标使用记录
+    state.antifakeUsageRecords.unshift({
+      id: makeId(),
+      orderNo: group.orderNo || '',
+      factory: factory,
+      ratio: ratioDisplay,
+      ratioValue: ratio,
+      deductionQty: actualDeducted,
+      orderQty: totalQty,
+      fileName: fileName || '',
+      createdAt: nowISO()
+    });
     state.operationLogs = state.operationLogs || [];
     state.operationLogs.unshift({
       time: nowISO(),
       action: '采购订单防伪标自动扣减',
-      detail: factory + ' / 订单 ' + (group.orderNo || '') + ' / 订单数量 ' + totalQty + ' / 比例 ' + ratioStr + ' / 扣减 ' + actualDeducted + ' / 扣减前 ' + before + ' / 扣减后 ' + state.antifakeStock[factory],
+      detail: factory + ' / 订单 ' + (group.orderNo || '') + ' / 订单数量 ' + totalQty + ' / 比例 ' + ratioDisplay + ' / 扣减 ' + actualDeducted + ' / 扣减前 ' + before + ' / 扣减后 ' + state.antifakeStock[factory],
       factory: factory
     });
-    return { factory: factory, deducted: actualDeducted, skipped: false, before: before, after: state.antifakeStock[factory], ratio: ratioStr, orderQty: totalQty };
+    return { factory: factory, deducted: actualDeducted, skipped: false, before: before, after: state.antifakeStock[factory], ratio: ratioDisplay, orderQty: totalQty };
   }
 
   function generateWeekly() {

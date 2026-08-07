@@ -2674,6 +2674,7 @@
         <div class="antifake-subtabs" id="antifakeSubtabs">
           <button class="antifake-subtab-btn active" data-antifake-subtab="ledger" type="button">登记防伪标流水</button>
           <button class="antifake-subtab-btn" data-antifake-subtab="stock" type="button">防伪标库存明细总览</button>
+          <button class="antifake-subtab-btn" data-antifake-subtab="usage" type="button">防伪标使用记录</button>
           <button class="antifake-subtab-btn" data-antifake-subtab="query" type="button">防伪标查询系统</button>
           <button class="antifake-subtab-toggle" id="antifakeSubtabToggle" type="button" title="折叠/展开子目录">▼</button>
         </div>
@@ -2777,6 +2778,26 @@
               <button class="btn" id="toggleAntifakeHiddenBtn" type="button">查看隐藏的无需寄标工厂（0）</button>
             </div>
             <div class="stock-grid" id="antifakeStockPanel"></div>
+          </div>
+        </div>
+        </div>
+
+        <div class="antifake-subtab-content" data-antifake-subtab-content="usage">
+        <div class="card">
+          <div class="card-header">
+            <h3>防伪标使用记录</h3>
+            <span>所有采购订单上传自动生成的防伪标扣减流水（不可手动新增）</span>
+          </div>
+          <div class="card-body">
+            <div id="antifakeUsageStats" class="pill-row" style="margin-bottom:12px;"></div>
+            <div class="table-wrap" style="max-height:520px;">
+              <table>
+                <thead>
+                  <tr><th>订单号</th><th>扣减执行时间</th><th>工厂名称</th><th>扣减比例</th><th>扣减数量</th><th>订单数量</th><th>来源文件</th></tr>
+                </thead>
+                <tbody id="antifakeUsageTableBody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
         </div>
