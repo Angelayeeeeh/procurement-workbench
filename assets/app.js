@@ -1234,6 +1234,20 @@
   function renderInventoryFactoryDirectoryHTML() {
     // 【增量变更】删除莱克重复条目，仅保留山东莱克科技有限公司
     var visibleSuppliers = state.suppliers.filter(function (s) { return s.name !== '莱克'; });
+    // 【供应商排序迭代】莱克专属库存置顶 → 有库存 → 暂无库存
+    visibleSuppliers.sort(function (a, b) {
+      var aIsLaike = a.name === '山东莱克科技有限公司';
+      var bIsLaike = b.name === '山东莱克科技有限公司';
+      if (aIsLaike && !bIsLaike) return -1;
+      if (!aIsLaike && bIsLaike) return 1;
+      var aStocks = factoryInventoryStockRows(a.name);
+      var bStocks = factoryInventoryStockRows(b.name);
+      var aHasStock = aStocks.length > 0;
+      var bHasStock = bStocks.length > 0;
+      if (aHasStock && !bHasStock) return -1;
+      if (!aHasStock && bHasStock) return 1;
+      return 0;
+    });
     var cards = visibleSuppliers.map(function (supplier) {
       var factory = supplier.name;
       var stocks = factoryInventoryStockRows(factory);
