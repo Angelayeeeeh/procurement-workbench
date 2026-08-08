@@ -819,6 +819,8 @@
     syncSettlementPayDue();
     renderSmartEmail();
     renderAll();
+    // 【默认页面迭代】点进去默认显示首页今日总览
+    switchSection('home');
   }
 
   function renderSelects() {
