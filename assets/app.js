@@ -1139,7 +1139,21 @@
   }
 
   function renderFactoryCards() {
-    $('factoryCards').innerHTML = state.suppliers.map(function (supplier) {
+    // 【供应商排序迭代】排序规则：莱克置顶 → 有库存 → 暂无库存
+    var sortedSuppliers = state.suppliers.slice().sort(function (a, b) {
+      var aIsLaike = a.name === '山东莱克科技有限公司';
+      var bIsLaike = b.name === '山东莱克科技有限公司';
+      if (aIsLaike && !bIsLaike) return -1;
+      if (!aIsLaike && bIsLaike) return 1;
+      var aStocks = factoryInventoryStockRows(a.name);
+      var bStocks = factoryInventoryStockRows(b.name);
+      var aHasStock = aStocks.length > 0;
+      var bHasStock = bStocks.length > 0;
+      if (aHasStock && !bHasStock) return -1;
+      if (!aHasStock && bHasStock) return 1;
+      return 0;
+    });
+    $('factoryCards').innerHTML = sortedSuppliers.map(function (supplier) {
       var f = supplier.name;
       var records = state.records.filter(function (r) { return r.factory === f; });
       var open = records.filter(function (r) { return r.status !== '已完成'; }).length;
@@ -1234,7 +1248,9 @@
         '<p>' + escapeHTML(latest ? ('最近更新：订单 ' + (latest.orderNo || '未填') + ' / ' + shortTime(latest.createdAt)) : '暂无库存流水') + '</p>' +
         '</div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">' +
         laikeLink +
-        '<span class="status ' + (stocks.length ? 'doing' : 'pending') + '">' + (stocks.length ? '查看库存' : '暂无库存') + '</span>' +
+        (stocks.length
+          ? '<span style="display:inline-block;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:600;background:#2A9D8F;color:#fff;border:1px solid #2A9D8F;box-shadow:0 2px 6px rgba(42,157,143,0.25);">查看库存</span>'
+          : '<span style="display:inline-block;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:500;background:#E5E7EB;color:#9CA3AF;border:1px solid #D1D5DB;">暂无库存</span>') +
         '</div></div>';
     }).join('');
     return '<div class="pill-row" style="margin-bottom:12px;">' +
