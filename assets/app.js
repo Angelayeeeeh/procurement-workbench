@@ -2395,8 +2395,8 @@
       return months.indexOf(key) >= 0 || p.type === '采购订单待付款';
     }).sort(function (a, b) {
       // 【排序迭代】已付款排最下，待付款排最上（按更新时间倒序）
-      var aDone = a.paymentStatus === '已付款';
-      var bDone = b.paymentStatus === '已付款';
+      var aDone = a.paymentStatus === '已付款' || a.paymentStatus === '已完成';
+      var bDone = b.paymentStatus === '已付款' || b.paymentStatus === '已完成';
       if (aDone && !bDone) return 1;
       if (!aDone && bDone) return -1;
       if (aDone && bDone) {
@@ -2404,8 +2404,8 @@
       }
       return (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || '');
     });
-    var totalWaitPay = scoped.filter(function (p) { return p.paymentStatus !== '已付款'; }).length;
-    var totalWaitPayAmount = scoped.filter(function (p) { return p.paymentStatus !== '已付款'; }).reduce(function (sum, p) {
+    var totalWaitPay = scoped.filter(function (p) { return p.paymentStatus !== '已付款' && p.paymentStatus !== '已完成'; }).length;
+    var totalWaitPayAmount = scoped.filter(function (p) { return p.paymentStatus !== '已付款' && p.paymentStatus !== '已完成'; }).reduce(function (sum, p) {
       return sum + financePaymentRemainingAmount(p);
     }, 0);
     var totalCard = '<div class="finance-month-card" style="margin-bottom:14px;">' +
@@ -2416,11 +2416,11 @@
       '</div></div>';
     var cards = months.map(function (m) {
       var items = scoped.filter(function (p) { return monthKey(parseYMD(p.dueDate) || today()) === m; });
-      var waitPay = items.filter(function (p) { return p.paymentStatus !== '已付款'; }).length;
-      var paid = items.filter(function (p) { return p.paymentStatus === '已付款'; }).length;
+      var waitPay = items.filter(function (p) { return p.paymentStatus !== '已付款' && p.paymentStatus !== '已完成'; }).length;
+      var paid = items.filter(function (p) { return p.paymentStatus === '已付款' || p.paymentStatus === '已完成'; }).length;
       var waitInvoice = items.filter(function (p) { return p.invoiceStatus !== '已开票' && p.invoiceStatus !== '无需开票'; }).length;
       var invoiced = items.filter(function (p) { return p.invoiceStatus === '已开票'; }).length;
-      var waitPayAmount = items.filter(function (p) { return p.paymentStatus !== '已付款'; }).reduce(function (sum, p) {
+      var waitPayAmount = items.filter(function (p) { return p.paymentStatus !== '已付款' && p.paymentStatus !== '已完成'; }).reduce(function (sum, p) {
         return sum + financePaymentRemainingAmount(p);
       }, 0);
       return '<div class="finance-month-card">' +
@@ -2470,8 +2470,8 @@
         '</td>' +
         '<td>' + escapeHTML(p.requester || '') + '</td>' +
         '<td>' + escapeHTML(formatDate(p.dueDate) || '') + '</td>' +
-        '<td><span class="status ' + (p.paymentStatus === '已付款' ? 'done' : statusClass('待跟进', p.dueDate)) + '">' + escapeHTML(p.paymentStatus) + '</span></td>' +
-        '<td><span class="status ' + (p.invoiceStatus === '已开票' ? 'done' : (p.invoiceStatus === '部分开票' ? 'doing' : (p.invoiceStatus === '无需开票' ? 'idle' : 'pending'))) + '">' + escapeHTML(p.invoiceStatus) + '</span>' +
+        '<td><span class="status ' + ((p.paymentStatus === '已付款' || p.paymentStatus === '已完成') ? 'done' : (p.paymentStatus === '部分付款' ? 'doing' : 'pending')) + '">' + escapeHTML(p.paymentStatus) + '</span></td>' +
+        '<td><span class="status ' + ((p.invoiceStatus === '已开票' || p.invoiceStatus === '已完成') ? 'done' : (p.invoiceStatus === '部分开票' ? 'doing' : (p.invoiceStatus === '无需开票' ? 'idle' : 'pending'))) + '">' + escapeHTML(p.invoiceStatus) + '</span>' +
           (p.invoiceStatus === '无需开票' ? '' :
             '<div class="muted">已开票：' + escapeHTML(formatCurrency(invoiceAmount) || '￥0.00') + '（' + invoicePercent.toFixed(2) + '%）</div>' +
             '<div class="muted">剩余待开：' + escapeHTML(formatCurrency(invoiceRemaining) || '￥0.00') + '（' + invoiceRemainingPercent.toFixed(2) + '%）</div>') + '</td>' +
@@ -2604,8 +2604,8 @@
             '</td>' +
             '<td>' + escapeHTML(p.requester || '') + '</td>' +
             '<td>' + escapeHTML(formatDate(p.dueDate) || '') + '</td>' +
-            '<td><span class="status ' + (p.paymentStatus === '已付款' ? 'done' : statusClass('待跟进', p.dueDate)) + '">' + escapeHTML(p.paymentStatus) + '</span></td>' +
-            '<td><span class="status ' + (p.invoiceStatus === '已开票' ? 'done' : (p.invoiceStatus === '部分开票' ? 'doing' : (p.invoiceStatus === '无需开票' ? 'idle' : 'pending'))) + '">' + escapeHTML(p.invoiceStatus) + '</span>' +
+            '<td><span class="status ' + ((p.paymentStatus === '已付款' || p.paymentStatus === '已完成') ? 'done' : (p.paymentStatus === '部分付款' ? 'doing' : 'pending')) + '">' + escapeHTML(p.paymentStatus) + '</span></td>' +
+            '<td><span class="status ' + ((p.invoiceStatus === '已开票' || p.invoiceStatus === '已完成') ? 'done' : (p.invoiceStatus === '部分开票' ? 'doing' : (p.invoiceStatus === '无需开票' ? 'idle' : 'pending'))) + '">' + escapeHTML(p.invoiceStatus) + '</span>' +
               (p.invoiceStatus === '无需开票' ? '' :
                 '<div class="muted">已开票：' + escapeHTML(formatCurrency(invoiceAmount) || '￥0.00') + '（' + invoicePercent.toFixed(2) + '%）</div>' +
                 '<div class="muted">剩余待开：' + escapeHTML(formatCurrency(invoiceRemaining) || '￥0.00') + '（' + invoiceRemainingPercent.toFixed(2) + '%）</div>') + '</td>' +
@@ -2723,8 +2723,8 @@
     return list.filter(function (p) {
       var key = monthKey(parseYMD(p.dueDate) || today());
       if (financeListFilter.month && key !== financeListFilter.month) return false;
-      if (financeListFilter.status === 'waitPay') return p.paymentStatus !== '已付款';
-      if (financeListFilter.status === 'paid') return p.paymentStatus === '已付款';
+      if (financeListFilter.status === 'waitPay') return p.paymentStatus !== '已付款' && p.paymentStatus !== '已完成';
+      if (financeListFilter.status === 'paid') return p.paymentStatus === '已付款' || p.paymentStatus === '已完成';
       if (financeListFilter.status === 'waitInvoice') return p.invoiceStatus !== '已开票' && p.invoiceStatus !== '无需开票';
       return true;
     });
@@ -2744,7 +2744,7 @@
     var sum = payment.paymentFlows.reduce(function (total, flow) {
       return total + Number(flow.amount || 0);
     }, 0);
-    if (!sum && payment.paymentStatus === '已付款' && financePaymentTotalAmount(payment)) {
+    if (!sum && (payment.paymentStatus === '已付款' || payment.paymentStatus === '已完成') && financePaymentTotalAmount(payment)) {
       sum = financePaymentTotalAmount(payment);
     }
     payment.paidAmount = sum;
@@ -2759,7 +2759,7 @@
     if (!payment) return;
     var total = financePaymentTotalAmount(payment);
     var paid = financePaymentPaidAmount(payment);
-    if (payment.paymentStatus === '已付款' && !paid && total) {
+    if ((payment.paymentStatus === '已付款' || payment.paymentStatus === '已完成') && !paid && total) {
       payment.paidAmount = total;
       return;
     }
@@ -2769,7 +2769,7 @@
     } else if (paid > 0) {
       payment.paymentStatus = '部分付款';
       payment.paidAt = '';
-    } else if (payment.paymentStatus === '已付款' || payment.paymentStatus === '部分付款') {
+    } else if (payment.paymentStatus === '已付款' || payment.paymentStatus === '已完成' || payment.paymentStatus === '部分付款') {
       payment.paymentStatus = '待付款';
       payment.paidAt = '';
     }
