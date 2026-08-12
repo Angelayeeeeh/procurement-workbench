@@ -4993,6 +4993,7 @@
           '</div>' + specialHint;
       })() +
       '<div class="record-actions" style="margin-top:12px;">' +
+      '<label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;color:var(--ink);margin-right:auto;"><input type="checkbox" id="skipInventoryCheckbox" style="width:16px;height:16px;cursor:pointer;"> 跳过库存入库（仅保存订单信息，进入防伪标扣减和付款流转）</label>' +
       '<button class="btn primary" id="confirmPurchaseOrderImportBtn" type="button">确认识别并进入流转</button>' +
       '<button class="btn" id="cancelPurchaseOrderImportBtn" type="button">取消</button>' +
       '</div></div>';
@@ -5093,20 +5094,23 @@
     parsed.items = group.items || [];
   }
 
-  function purchaseOrderMissingFields(group) {
+  function purchaseOrderMissingFields(group, skipInventory) {
     var missing = [];
     if (!group.orderNo) missing.push('订单号');
     if (!group.supplier) missing.push('供货方（工厂名称）');
     if (!group.orderDate) missing.push('订单日期');
-    if (!(group.items || []).length) missing.push('产品明细行');
+    // 【跳过库存迭代】勾选跳过库存时，不校验产品明细行和明细字段
+    if (!skipInventory) {
+      if (!(group.items || []).length) missing.push('产品明细行');
+      (group.items || []).forEach(function (item, index) {
+        if (!item.gyModel) missing.push('第' + (index + 1) + '行GY号');
+        if (!item.qty) missing.push('第' + (index + 1) + '行数量');
+        if (!item.unitPrice) missing.push('第' + (index + 1) + '行含税单价');
+        if (!item.lineAmount) missing.push('第' + (index + 1) + '行总金额');
+      });
+    }
     if (!group.qty) missing.push('合计数量');
     if (!group.totalAmount) missing.push('合计总金额');
-    (group.items || []).forEach(function (item, index) {
-      if (!item.gyModel) missing.push('第' + (index + 1) + '行GY号');
-      if (!item.qty) missing.push('第' + (index + 1) + '行数量');
-      if (!item.unitPrice) missing.push('第' + (index + 1) + '行含税单价');
-      if (!item.lineAmount) missing.push('第' + (index + 1) + '行总金额');
-    });
     return missing;
   }
 
@@ -5124,7 +5128,9 @@
       return;
     }
     applyPurchaseOrderPreviewEdits(parsed);
-    parsed.missing = purchaseOrderMissingFields(parsed.singleOrder);
+    // 【跳过库存迭代】用户勾选"跳过库存入库"时，不校验产品明细行
+    var skipInventory = $('skipInventoryCheckbox') && $('skipInventoryCheckbox').checked;
+    parsed.missing = purchaseOrderMissingFields(parsed.singleOrder, skipInventory);
     if (parsed.missing && parsed.missing.length) {
       toast('关键字段未识别完整：' + parsed.missing.join('、'));
       return;
@@ -5192,7 +5198,12 @@
       if (upsertPurchaseOrderPayment(group, record, amount, parsed.fileName)) updatedPayments++;
     } else {
       // 分支A：普通工厂 — 执行库存入库和财务待付款
-      updatedInventory = applyPurchaseOrderInventoryReceipt(group, record, parsed.fileName);
+      if (!skipInventory) {
+        updatedInventory = applyPurchaseOrderInventoryReceipt(group, record, parsed.fileName);
+      } else {
+        record.note = (record.note || '') + ' | 用户勾选跳过库存入库，仅保存订单信息进入防伪标扣减和付款流转';
+        record.updatedAt = nowISO();
+      }
       if (upsertPurchaseOrderPayment(group, record, amount, parsed.fileName)) updatedPayments++;
     }
     syncEmailOrderFactory(group.orderNo, group.supplier);
@@ -5214,6 +5225,7 @@
       toastMsg = '已完成特殊工厂采购单识别：' + group.supplier + '（无需付款），库存无变动';
     } else {
       toastMsg = '已完成采购单识别并进入流转：库存入库 ' + updatedInventory + ' 行，财务待付款 ' + updatedPayments + ' 笔';
+      if (skipInventory) toastMsg = '已完成采购单识别并进入流转（跳过库存入库），财务待付款 ' + updatedPayments + ' 笔';
     }
     if (antifakeResult && !antifakeResult.skipped) {
       toastMsg += '；防伪标自动扣减 ' + antifakeResult.factory + '：' + antifakeResult.deducted + ' 个（比例 ' + antifakeResult.ratio + '，剩余 ' + antifakeResult.after + '）';
