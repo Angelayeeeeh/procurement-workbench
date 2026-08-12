@@ -1126,6 +1126,20 @@
     return (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31');
   }
 
+  // 【排序迭代】已完成排最下（按时间正序），待完成排最上（按更新时间倒序）
+  function sortByStatusThenUpdated(a, b) {
+    var aDone = a.status === '已完成' || a.paymentStatus === '已付款';
+    var bDone = b.status === '已完成' || b.paymentStatus === '已付款';
+    if (aDone && !bDone) return 1;
+    if (!aDone && bDone) return -1;
+    // 同为已完成：按时间正序（早的在前）
+    if (aDone && bDone) {
+      return (a.dueDate || a.updatedAt || '').localeCompare(b.dueDate || b.updatedAt || '');
+    }
+    // 同为待完成：按更新时间倒序（最新更新的在前）
+    return (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || '');
+  }
+
   function renderSupplierSubdir() {
     var profile = $('supplierProfilePanel');
     var inventory = $('supplierInventoryPanel');
@@ -2380,7 +2394,15 @@
       var key = monthKey(parseYMD(p.dueDate) || today());
       return months.indexOf(key) >= 0 || p.type === '采购订单待付款';
     }).sort(function (a, b) {
-      return (a.dueDate || '').localeCompare(b.dueDate || '') || (a.createdAt || '').localeCompare(b.createdAt || '');
+      // 【排序迭代】已付款排最下，待付款排最上（按更新时间倒序）
+      var aDone = a.paymentStatus === '已付款';
+      var bDone = b.paymentStatus === '已付款';
+      if (aDone && !bDone) return 1;
+      if (!aDone && bDone) return -1;
+      if (aDone && bDone) {
+        return (a.dueDate || a.updatedAt || '').localeCompare(b.dueDate || b.updatedAt || '');
+      }
+      return (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || '');
     });
     var totalWaitPay = scoped.filter(function (p) { return p.paymentStatus !== '已付款'; }).length;
     var totalWaitPayAmount = scoped.filter(function (p) { return p.paymentStatus !== '已付款'; }).reduce(function (sum, p) {
@@ -2981,7 +3003,7 @@
   }
 
   function filterByModule(moduleId) {
-    return state.records.filter(function (r) { return r.module === moduleId; }).sort(byDue);
+    return state.records.filter(function (r) { return r.module === moduleId; }).sort(sortByStatusThenUpdated);
   }
 
   function filterOrderRecords() {
