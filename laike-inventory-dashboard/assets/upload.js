@@ -18,10 +18,22 @@
   function fmtDate(v) {
     if (!v) return '';
     if (v instanceof Date) {
-      var y = v.getFullYear(), m = String(v.getMonth() + 1).padStart(2, '0'), d = String(v.getDate()).padStart(2, '0');
-      return y + '-' + m + '-' + d;
+      var y = String(v.getFullYear()), m = String(v.getMonth() + 1), d = String(v.getDate());
+      return y + '/' + m + '/' + d;
     }
-    return String(v).trim();
+    var s = String(v).trim();
+    // 尝试解析各种日期格式，统一输出 YYYY/M/D
+    var d2 = new Date(s);
+    if (!isNaN(d2.getTime())) {
+      return d2.getFullYear() + '/' + (d2.getMonth() + 1) + '/' + d2.getDate();
+    }
+    // 已经是 YYYY/M/D 或 YYYY-MM-DD 格式的，统一为 YYYY/M/D
+    s = s.replace(/-/g, '/');
+    var parts = s.split('/');
+    if (parts.length >= 3) {
+      return parts[0] + '/' + parseInt(parts[1], 10) + '/' + parseInt(parts[2], 10);
+    }
+    return s;
   }
   function parseNumberLike(v) {
     if (typeof v === 'number') return isFinite(v) ? v : 0;
@@ -136,18 +148,43 @@
     return cols;
   }
 
+  var ORDER_CATEGORIES = ['润滑油', '制动液', '空调套装'];
+
   function detectOrderCols(headers) {
     var cols = {};
+    cols.orderNo = findCol(headers, ['订单号', '销售订单号', 'IBOC', '预订单']);
+    cols.orderDate = findCol(headers, ['订单日期', '下单日期', '日期', '制单日期']);
+    cols.model = findCol(headers, ['型号', 'SKU', 'SKU编码', 'GY号', 'GY', '匹配型号']);
+    cols.product = findCol(headers, ['品名', '产品名称', '产品名称及型号', '货品名称', '货品', '产品']);
+    cols.qty = findCol(headers, ['数量', '订货数量', '订单数量', '本次订单数量']);
+    cols.unitPrice = findCol(headers, ['单价', '含税运单价', '含税单价', '无税单价', '价格']);
+    cols.totalAmount = findCol(headers, ['总金额', '金额', '总价', '合计金额', '订单金额']);
     cols.category = findCol(headers, ['品类', '类别']);
-    cols.orderNo = findCol(headers, ['订单号']);
-    cols.sku = findCol(headers, ['SKU', 'SKU编码', 'GY号', 'GY']);
-    cols.qty = findCol(headers, ['订货数量', '订单数量', '本次订单数量', '数量']);
-    cols.product = findCol(headers, ['产品名称及型号', '产品名称', '产品']);
     cols.customer = findCol(headers, ['客户']);
     cols.entity = findCol(headers, ['抬头']);
     cols.factory = findCol(headers, ['工厂']);
     cols.unit = findCol(headers, ['单位']);
     return cols;
+  }
+
+  function trimOrderNoSuffix(orderNo) {
+    var s = String(orderNo || '').trim();
+    // 去掉末尾的 -1, -2 等子订单后缀，只保留主订单号
+    return s.replace(/-\d+$/, '');
+  }
+
+  function extractLabelValue(rows, label) {
+    for (var i = 0; i < Math.min(rows.length, 15); i++) {
+      var r = rows[i];
+      if (!r) continue;
+      for (var j = 0; j < r.length; j++) {
+        var cell = String(r[j] || '').trim();
+        if (cell === label || cell === label + '：' || cell === label + ':') {
+          if (r[j + 1]) return String(r[j + 1]).trim();
+        }
+      }
+    }
+    return '';
   }
 
   function handleShipFile(file) {
@@ -359,36 +396,57 @@
     parseExcel(file, function(err, rows) {
       if (err) { showPreview('error', '订单表解析失败：' + err.message); return; }
       if (rows.length < 2) { showPreview('error', '订单表没有数据行'); return; }
-      var detected = detectHeader(rows, detectOrderCols, ['orderNo', 'sku', 'qty']);
+
+      // 先尝试从标签行提取订单号和订单日期（如"订单号：26IBOC0849-1"）
+      var headerOrderNo = trimOrderNoSuffix(extractLabelValue(rows, '订单号'));
+      var headerOrderDate = extractLabelValue(rows, '订单日期');
+      if (headerOrderDate) headerOrderDate = fmtDate(headerOrderDate);
+
+      var detected = detectHeader(rows, detectOrderCols, ['model', 'qty']);
       var headers = detected.headers;
       var cols = detected.cols;
+
+      // 如果表头中没有订单号列，但有标签行的订单号，则使用标签值
+      var hasOrderNoCol = cols.orderNo >= 0;
       var missing = [];
-      if (cols.orderNo === -1) missing.push('订单号');
-      if (cols.sku === -1) missing.push('GY号');
+      if (!hasOrderNoCol && !headerOrderNo) missing.push('订单号');
+      if (cols.model === -1) missing.push('型号');
       if (cols.qty === -1) missing.push('数量');
       if (missing.length) {
         showPreview('error', '订单表缺少必要列：' + missing.join('、') + '。检测到的表头：' + headers.join('、'));
         return;
       }
+
       var parsed = [];
       for (var i = detected.index + 1; i < rows.length; i++) {
         var r = rows[i];
         if (!r || r.length === 0) continue;
+        var model = String(r[cols.model] || '').trim();
         var qty = parseNumberLike(r[cols.qty]);
-        var orderNo = String(r[cols.orderNo] || '').trim();
-        var sku = String(r[cols.sku] || '').trim();
-        if (!orderNo && !sku && !qty) continue;
+        // 跳过合计行和空行
+        if (!model && !qty) continue;
+        var rowText = r.join(' ').trim();
+        if (rowText.indexOf('合计') >= 0 || rowText.indexOf('备注') >= 0) continue;
+        var orderNo = hasOrderNoCol ? trimOrderNoSuffix(r[cols.orderNo]) : headerOrderNo;
+        var orderDate = cols.orderDate >= 0 ? fmtDate(r[cols.orderDate]) : headerOrderDate;
         parsed.push({
-          品类: cols.category >= 0 ? String(r[cols.category] || '').trim() : '未分类',
+          品类: cols.category >= 0 ? String(r[cols.category] || '').trim() : '',
           订单号: orderNo,
-          SKU编码: sku,
+          订单日期: orderDate || '',
+          型号: model,
+          品名: cols.product >= 0 ? String(r[cols.product] || '').trim() : '',
           数量: qty,
-          产品名称: cols.product >= 0 ? String(r[cols.product] || '').trim() : '',
+          单价: cols.unitPrice >= 0 ? parseNumberLike(r[cols.unitPrice]) : 0,
+          总金额: cols.totalAmount >= 0 ? parseNumberLike(r[cols.totalAmount]) : 0,
           客户: cols.customer >= 0 ? String(r[cols.customer] || '').trim() : '',
           抬头: cols.entity >= 0 ? String(r[cols.entity] || '').trim() : '',
           工厂: cols.factory >= 0 ? String(r[cols.factory] || '').trim() : '莱克',
           单位: cols.unit >= 0 ? String(r[cols.unit] || '').trim() : ''
         });
+      }
+      if (!parsed.length) {
+        showPreview('error', '未识别到有效数据行，请检查Excel格式。检测到的表头：' + headers.join('、'));
+        return;
       }
       state.orderParsed = parsed;
       state.orderPreviewFileName = file.name;
@@ -396,14 +454,32 @@
     });
   }
 
+  function detectCategoryFromFileName(fileName) {
+    var name = String(fileName || '').toLowerCase();
+    var bestMatch = '';
+    var bestScore = 0;
+    ORDER_CATEGORIES.forEach(function(cat) {
+      var score = 0;
+      if (name.indexOf(cat) >= 0) score = cat.length;
+      if (score > bestScore) { bestScore = score; bestMatch = cat; }
+    });
+    return bestMatch;
+  }
+
   function matchAndPreviewOrders(parsed, fileName) {
+    var autoCategory = detectCategoryFromFileName(fileName);
     state.orderPreviewRows = parsed.map(function(o) {
       return {
-        品类: o.品类 || '未分类',
+        品类: o.品类 || autoCategory || '',
         订单号: o.订单号,
-        SKU编码: o.SKU编码,
+        订单日期: o.订单日期 || '',
+        型号: o.型号,
+        SKU编码: o.型号,
+        品名: o.品名 || '',
+        产品名称: o.品名 || '',
         数量: parseNumberLike(o.数量),
-        产品名称: o.产品名称,
+        单价: parseNumberLike(o.单价),
+        总金额: parseNumberLike(o.总金额),
         客户: o.客户,
         抬头: o.抬头,
         工厂: o.工厂 || '莱克',
@@ -412,6 +488,7 @@
       };
     });
     state.orderPreviewFileName = fileName;
+    state.autoCategory = autoCategory;
     renderOrderPreview();
   }
 
@@ -433,20 +510,28 @@
     var newCount = rows.length - addCount;
     var html = '<div class="preview-header">' +
       '<h3>订单表智能识别结果</h3>' +
-      '<p>文件：<strong>' + esc(state.orderPreviewFileName) + '</strong>；共识别 <strong>' + rows.length + '</strong> 行，其中新增 <strong>' + newCount + '</strong> 行，追加 <strong>' + addCount + '</strong> 行。确认提交前不会修改订单数据。</p>' +
+      '<p>文件：<strong>' + esc(state.orderPreviewFileName) + '</strong>；共识别 <strong>' + rows.length + '</strong> 行，其中新增 <strong>' + newCount + '</strong> 行，追加 <strong>' + addCount + '</strong> 行。请选择品类后确认提交，提交前不会修改订单数据。</p>' +
       '</div>';
     if (rows.length) {
-      html += '<div class="table-wrap" style="max-height:360px"><table><thead><tr><th>品类</th><th>订单号</th><th>GY号 / SKU</th><th>产品名称</th><th>客户</th><th>工厂</th><th>数量</th><th>提交后状态</th><th>操作</th></tr></thead><tbody>';
+      html += '<div class="table-wrap" style="max-height:360px"><table><thead><tr>' +
+        '<th>品类</th><th>订单号</th><th>订单日期</th><th>型号</th><th>品名</th><th>数量</th><th>单价</th><th>总金额</th><th>提交后状态</th><th>操作</th>' +
+        '</tr></thead><tbody>';
       rows.forEach(function(r, i) {
         var st = orderPreviewStatus(r);
+        var catOptions = ORDER_CATEGORIES.map(function(c) {
+          return '<option value="' + esc(c) + '"' + (r.品类 === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+        }).join('');
+        var catSelect = '<select class="preview-input" data-order-field="品类" data-order-index="' + i + '">' +
+          '<option value=""' + (!r.品类 ? ' selected' : '') + '>请选择</option>' + catOptions + '</select>';
         html += '<tr>' +
-          '<td><input class="preview-input" data-order-field="品类" data-order-index="' + i + '" value="' + esc(r.品类) + '"></td>' +
+          '<td>' + catSelect + '</td>' +
           '<td><input class="preview-input mono" data-order-field="订单号" data-order-index="' + i + '" value="' + esc(r.订单号) + '"></td>' +
-          '<td><input class="preview-input mono" data-order-field="SKU编码" data-order-index="' + i + '" value="' + esc(r.SKU编码) + '"></td>' +
-          '<td><input class="preview-input" data-order-field="产品名称" data-order-index="' + i + '" value="' + esc(r.产品名称) + '"></td>' +
-          '<td><input class="preview-input" data-order-field="客户" data-order-index="' + i + '" value="' + esc(r.客户) + '"></td>' +
-          '<td><input class="preview-input" data-order-field="工厂" data-order-index="' + i + '" value="' + esc(r.工厂) + '"></td>' +
+          '<td><input class="preview-input" data-order-field="订单日期" data-order-index="' + i + '" value="' + esc(r.订单日期) + '"></td>' +
+          '<td><input class="preview-input mono" data-order-field="型号" data-order-index="' + i + '" value="' + esc(r.型号) + '"></td>' +
+          '<td><input class="preview-input" data-order-field="品名" data-order-index="' + i + '" value="' + esc(r.品名) + '"></td>' +
           '<td><input class="preview-input num" type="number" min="0" step="1" data-order-field="数量" data-order-index="' + i + '" value="' + esc(r.数量) + '"></td>' +
+          '<td><input class="preview-input num" type="number" min="0" step="0.01" data-order-field="单价" data-order-index="' + i + '" value="' + esc(r.单价) + '"></td>' +
+          '<td><input class="preview-input num" type="number" min="0" step="0.01" data-order-field="总金额" data-order-index="' + i + '" value="' + esc(r.总金额) + '"></td>' +
           '<td>' + esc(st.text) + '；剩余 ' + num(st.afterRemain) + '</td>' +
           '<td><button type="button" class="preview-delete-btn" data-order-delete="' + i + '">删除</button></td>' +
           '</tr>';
@@ -455,14 +540,40 @@
     } else {
       html += '<p>当前预览没有可提交的订单行。</p>';
     }
+    var noCatCount = rows.filter(function(r) { return !r.品类; }).length;
+    var submitDisabled = !rows.length || noCatCount > 0;
+    var hint = noCatCount > 0 ? '有 <strong>' + noCatCount + '</strong> 行未选择品类，请选择品类后再提交' : '可先修改或删除错误行；确认提交后只追加或累计，不覆盖历史订单';
+    var autoCatHtml = state.autoCategory ?
+      '<span style="margin-right:12px;font-size:13px;color:var(--accent)">从文件名识别到品类：<strong>' + esc(state.autoCategory) + '</strong></span>' +
+      '<button type="button" class="btn-primary" id="autoFillCatBtn" style="padding:4px 12px;font-size:13px">一键填充所有行</button>' +
+      '<select id="bulkCatSelect" class="preview-input" style="margin-left:8px;padding:4px 8px;width:auto"><option value="">修改为...</option>' +
+      ORDER_CATEGORIES.map(function(c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join('') + '</select>'
+      : '';
     html += '<div class="update-bar">' +
-      '<button class="btn-primary" id="applyOrderBtn"' + (rows.length ? '' : ' disabled') + '>确认提交新增订单</button>' +
+      (autoCatHtml ? '<div style="margin-bottom:8px">' + autoCatHtml + '</div>' : '') +
+      '<button class="btn-primary" id="applyOrderBtn"' + (submitDisabled ? ' disabled' : '') + '>确认提交新增订单</button>' +
       '<button id="cancelUpdateBtn">取消</button>' +
-      '<span class="hint">可先修改或删除错误行；确认提交后只追加或累计，不覆盖历史订单</span>' +
+      '<span class="hint">' + hint + '</span>' +
       '</div>';
     showPreview('ok', html);
     document.getElementById('applyOrderBtn').addEventListener('click', function() { applyOrderUpdate(); });
     document.getElementById('cancelUpdateBtn').addEventListener('click', clearPreview);
+    var autoFillBtn = document.getElementById('autoFillCatBtn');
+    if (autoFillBtn) {
+      autoFillBtn.addEventListener('click', function() {
+        if (!state.autoCategory) return;
+        state.orderPreviewRows.forEach(function(r) { r.品类 = state.autoCategory; });
+        renderOrderPreview();
+      });
+    }
+    var bulkCatSelect = document.getElementById('bulkCatSelect');
+    if (bulkCatSelect) {
+      bulkCatSelect.addEventListener('change', function() {
+        if (!bulkCatSelect.value) return;
+        state.orderPreviewRows.forEach(function(r) { r.品类 = bulkCatSelect.value; });
+        renderOrderPreview();
+      });
+    }
     bindOrderPreviewEvents();
   }
 
@@ -473,7 +584,10 @@
         var idx = parseInt(input.getAttribute('data-order-index'), 10);
         var field = input.getAttribute('data-order-field');
         if (!state.orderPreviewRows[idx]) return;
-        state.orderPreviewRows[idx][field] = field === '数量' ? parseNumberLike(input.value) : input.value.trim();
+        var numericFields = ['数量', '单价', '总金额'];
+        state.orderPreviewRows[idx][field] = numericFields.indexOf(field) >= 0 ? parseNumberLike(input.value) : input.value.trim();
+        if (field === '型号') state.orderPreviewRows[idx].SKU编码 = state.orderPreviewRows[idx].型号;
+        if (field === '品名') state.orderPreviewRows[idx].产品名称 = state.orderPreviewRows[idx].品名;
         renderOrderPreview();
       });
     });
@@ -490,6 +604,11 @@
     var data = window.LAIKE_DASHBOARD_DATA;
     var previewRows = state.orderPreviewRows || [];
     if (!previewRows.length) return;
+    var noCat = previewRows.filter(function(r) { return !r.品类; });
+    if (noCat.length) {
+      showPreview('error', '有 ' + noCat.length + ' 行未选择品类，请选择品类后再提交。');
+      return;
+    }
     var existingMap = {};
     data.rows.forEach(function(r, i) {
       var key = r.品类 + '|' + r.订单号 + '|' + r.SKU编码;
@@ -499,8 +618,9 @@
     previewRows.forEach(function(o) {
       if (!o.订单号 && !o.SKU编码 && !parseNumberLike(o.数量)) return;
       var key = o.品类 + '|' + o.订单号 + '|' + o.SKU编码;
-      if (!grouped[key]) grouped[key] = { 品类: o.品类, 订单号: o.订单号, SKU编码: o.SKU编码, 数量: 0, 产品名称: o.产品名称, 客户: o.客户, 抬头: o.抬头, 工厂: o.工厂, 单位: o.单位, 行数: 0 };
+      if (!grouped[key]) grouped[key] = { 品类: o.品类, 订单号: o.订单号, 订单日期: o.订单日期, SKU编码: o.SKU编码, 型号: o.型号, 品名: o.品名, 产品名称: o.品名, 数量: 0, 单价: o.单价, 总金额: 0, 客户: o.客户, 抬头: o.抬头, 工厂: o.工厂, 单位: o.单位, 行数: 0 };
       grouped[key].数量 += parseNumberLike(o.数量);
+      grouped[key].总金额 += parseNumberLike(o.总金额);
       grouped[key].行数++;
     });
     Object.values(grouped).forEach(function(g) {
@@ -508,16 +628,24 @@
       if (existingMap[key] !== undefined) {
         data.rows[existingMap[key]].工厂总订单 += g.数量;
         data.rows[existingMap[key]].订单原始行数 += g.行数;
+        if (g.订单日期 && !data.rows[existingMap[key]].订单日期) data.rows[existingMap[key]].订单日期 = g.订单日期;
+        if (g.单价) data.rows[existingMap[key]].单价 = g.单价;
+        if (g.总金额) data.rows[existingMap[key]].总金额 = (data.rows[existingMap[key]].总金额 || 0) + g.总金额;
       } else {
         data.rows.push({
           品类: g.品类,
           工厂: g.工厂,
           订单号: g.订单号,
+          订单日期: g.订单日期,
           SKU编码: g.SKU编码,
+          型号: g.型号,
           产品名称: g.产品名称,
+          品名: g.品名,
           客户: g.客户,
           抬头: g.抬头,
           单位: g.单位,
+          单价: g.单价,
+          总金额: g.总金额,
           工厂总订单: g.数量,
           已发货数量: 0,
           工厂剩余数量: g.数量,
