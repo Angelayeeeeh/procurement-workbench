@@ -2197,7 +2197,7 @@
         <h1>Angela<br>OF采购工作台</h1>
         <p>机油、雨刷、车衣、蓄电池、防冻液等汽车后市场产品</p>
       </div>
-      <nav class="nav" id="nav"><button data-nav="home" class="active"><span>首页・今日总览</span><small>5</small></button><button data-nav="suppliers" class=""><span>供应商管理</span><small>0</small></button><button data-nav="orders" class=""><span>采购订单 &amp; 跟进</span><small>0</small></button><button data-nav="smartEmail" class=""><span>智能邮箱</span><small>0</small></button><button data-nav="finance" class=""><span>付款 &amp; 发票管理</span><small>1</small></button><button data-nav="reconciliation" class=""><span>工厂月结对账</span><small>0</small></button><button data-nav="antifake" class=""><span>防伪标管理</span><small>0</small></button><button data-nav="weekly" class=""><span>周报管理</span><small>5</small></button><button data-nav="projects" class=""><span>项目专项跟进</span><small>2</small></button></nav>
+      <nav class="nav" id="nav"><button data-nav="home" class="active"><span>首页・今日总览</span><small>5</small></button><button data-nav="suppliers" class=""><span>供应商管理</span><small>0</small></button><button data-nav="orders" class=""><span>采购订单 &amp; 跟进</span><small>0</small></button><button data-nav="finance" class=""><span>付款 &amp; 发票管理</span><small>1</small></button><button data-nav="reconciliation" class=""><span>工厂月结对账</span><small>0</small></button><button data-nav="antifake" class=""><span>防伪标管理</span><small>0</small></button><button data-nav="weekly" class=""><span>周报管理</span><small>5</small></button><button data-nav="projects" class=""><span>项目专项跟进</span><small>2</small></button></nav>
     </aside>
 
     <main class="main">
@@ -2468,113 +2468,6 @@
               <button class="btn" id="clearSelectedOrdersBtn">清空选择</button>
             </div>
             <div id="orderTable"><div class="empty">暂无记录，可通过“新建工作记录”或首页快捷输入添加。</div></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" data-section="smartEmail">
-        <div class="email-workbench">
-          <div class="card">
-            <div class="card-header">
-              <h3>智能邮件生成</h3>
-              <span>输入采购订单号，自动匹配工厂并生成采购往来邮件</span>
-            </div>
-            <div class="card-body">
-              <div class="form-grid">
-                <div class="field wide">
-                  <label for="emailOrderNo">输入采购订单号</label>
-                  <input id="emailOrderNo" placeholder="例：PO202608001">
-                  <div class="email-match" id="emailFactoryMatch">请输入订单号，系统会从本地订单-工厂表中匹配合作工厂。</div>
-                </div>
-                <div class="field wide">
-                  <label for="emailTemplate">选择邮件模板</label>
-                  <select id="emailTemplate"><option value="pendingSign">待回签邮件 + 工厂名称 + 订单号</option><option value="signedReturn">已回签邮件 + 工厂名称 + 订单号</option></select>
-                  <div class="email-actions">
-                    <button class="btn" id="toggleEmailTemplateFormBtn" type="button">新增邮件模板</button>
-                  </div>
-                  <div class="quick-feedback email-template-form" id="emailTemplateForm" style="display:none;">
-                    <div class="feedback-section">
-                      <strong>新增自定义邮件模板</strong>
-                      <p class="muted" style="margin:6px 0 10px;">可使用变量：{{订单号}}、{{工厂名称}}、{{回复截止日期}}、{{收到回签日期}}</p>
-                      <div class="form-grid">
-                        <div class="field wide">
-                          <label for="newEmailTemplateName">模板名称</label>
-                          <input id="newEmailTemplateName" placeholder="例：催回签邮件">
-                        </div>
-                        <div class="field wide">
-                          <label for="newEmailTemplateSubject">邮件主题</label>
-                          <input id="newEmailTemplateSubject" placeholder="例：采购订单{{订单号}}回签提醒">
-                        </div>
-                        <div class="field wide">
-                          <label for="newEmailTemplateBody">邮件正文</label>
-                          <textarea id="newEmailTemplateBody" placeholder="例：您好！
-附件为采购订单{{订单号}}，请查收并回签。"></textarea>
-                        </div>
-                        <div class="field wide">
-                          <label for="newEmailTemplateWechat">微信群同步短句（可选）</label>
-                          <textarea id="newEmailTemplateWechat" placeholder="可选：需要同步到微信群时填写。"></textarea>
-                        </div>
-                        <div class="field wide">
-                          <div class="email-actions">
-                            <button class="btn primary" id="saveEmailTemplateBtn" type="button">保存模板</button>
-                            <button class="btn" id="cancelEmailTemplateBtn" type="button">取消</button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div class="field">
-                  <label for="emailFactory">工厂名称</label>
-                  <input id="emailFactory" placeholder="输入订单号后自动填充，可手动修改">
-                </div>
-                <div class="field">
-                  <label for="emailReplyDeadline">回复截止日期</label>
-                  <input id="emailReplyDeadline" type="date">
-                </div>
-                <div class="field">
-                  <label for="emailSignedDate">收到回签日期</label>
-                  <input id="emailSignedDate" type="date">
-                </div>
-                <div class="field wide">
-                  <label for="emailExtraNote">备注 / 追加文字</label>
-                  <textarea id="emailExtraNote" placeholder="可选：这里填写的内容会追加到邮件正文末尾。"></textarea>
-                </div>
-                <div class="field wide">
-                  <button class="btn primary" id="renderEmailBtn" type="button">一键渲染邮件主题和正文</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="card-header">
-              <h3>邮件预览与复制</h3>
-              <span>所有内容生成后仍可直接在下方二次编辑</span>
-            </div>
-            <div class="card-body">
-              <div class="field">
-                <label for="emailSubjectOutput">邮件主题</label>
-                <textarea class="email-preview subject" id="emailSubjectOutput" placeholder="生成后的邮件主题"></textarea>
-              </div>
-              <div class="email-actions">
-                <button class="btn" id="copyEmailSubjectBtn" type="button">复制邮件主题</button>
-              </div>
-              <div class="field" style="margin-top:12px;">
-                <label for="emailBodyOutput">邮件正文</label>
-                <textarea class="email-preview" id="emailBodyOutput" placeholder="生成后的邮件正文"></textarea>
-              </div>
-              <div class="email-actions">
-                <button class="btn" id="copyEmailBodyBtn" type="button">复制邮件正文</button>
-              </div>
-              <div class="field" id="wechatCopyBlock" style="margin-top: 12px; display: block;">
-                <label for="emailWechatOutput">微信群同步短句</label>
-                <textarea class="email-preview" id="emailWechatOutput" placeholder="模板A生成后显示微信群同步文案"></textarea>
-                <div class="email-actions">
-                  <button class="btn" id="copyEmailWechatBtn" type="button">复制微信群文案</button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -2970,7 +2863,7 @@
           </div>
           <div class="field">
             <label for="module">所属模块</label>
-            <select id="module"><option value="suppliers">供应商管理</option><option value="orders">采购订单 &amp; 跟进</option><option value="smartEmail">智能邮箱</option><option value="finance">付款 &amp; 发票管理</option><option value="reconciliation">工厂月结对账</option><option value="antifake">防伪标管理</option><option value="contracts">合同管理</option><option value="projects">项目专项跟进</option></select>
+            <select id="module"><option value="suppliers">供应商管理</option><option value="orders">采购订单 &amp; 跟进</option><option value="finance">付款 &amp; 发票管理</option><option value="reconciliation">工厂月结对账</option><option value="antifake">防伪标管理</option><option value="contracts">合同管理</option><option value="projects">项目专项跟进</option></select>
           </div>
           <div class="field">
             <label for="status">进度状态</label>

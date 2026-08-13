@@ -251,11 +251,26 @@
     }
     .btn-primary:hover { transform: translateY(-1px); background: var(--accent-dark); box-shadow: 0 4px 12px rgba(42, 157, 143, .30); }
     .update-bar .hint { font-size: 13px; color: var(--muted); }
+    .manual-entry-card {
+      margin-top: 14px;
+      border: 2px solid var(--rule);
+      border-radius: var(--radius);
+      padding: 20px;
+      background: #FFFFFF;
+    }
+    .manual-entry-card h3 { margin: 0 0 6px; font-size: 16px; }
+    .manual-entry-card .desc { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+    .manual-entry-card .manual-icon { font-size: 24px; margin-right: 6px; }
+    .manual-table-wrap { overflow-x: auto; max-height: 340px; border-radius: 8px; border: 1px solid var(--rule); }
+    .manual-table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 860px; }
+    .manual-table-wrap th { position: sticky; top: 0; background: var(--bg2); padding: 8px 6px; text-align: left; font-size: 12px; white-space: nowrap; border-bottom: 1px solid var(--rule); }
+    .manual-table-wrap td { padding: 4px 6px; border-bottom: 1px solid var(--rule); }
+    .manual-table-wrap .preview-input { min-width: 80px; }
     @media (max-width: 700px) {
       .upload-grid { grid-template-columns: 1fr; }
     }
     @media print {
-      button, .controls, .quick-actions, .upload-section, .upload-preview { display: none; }
+      button, .controls, .quick-actions, .upload-section, .upload-preview, .manual-entry-card { display: none; }
       body { background: var(--bg2); }
       .card, .hero, .table-wrap { box-shadow: none; }
     }
@@ -308,6 +323,12 @@
           <div style="color: var(--accent); font-size: 13px; font-weight: 700;">点击选择或拖拽文件到此处</div>
           <div id="orderUploadPreview" class="upload-preview" style="display:none;"></div>
         </div>
+      </div>
+      <div class="manual-entry-card">
+        <h3><span class="manual-icon">✏️</span>手动录入新订单</h3>
+        <p class="desc">无需 Excel 文件，直接手动填写订单信息。同一 SKU（品类 + 订单号 + SKU编码）会自动追加到已有库存；填写后点击「确认提交」才会更新库存数据。</p>
+        <div id="manualEntryContainer"></div>
+        <div id="manualUploadPreview" class="upload-preview" style="display:none;"></div>
       </div>
       <div id="uploadPreview" class="upload-preview" style="display:none;"></div>
       <div class="save-panel">

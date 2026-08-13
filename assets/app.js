@@ -24,7 +24,6 @@
   var modules = [
     { id: 'suppliers', name: '供应商管理' },
     { id: 'orders', name: '采购订单 & 跟进' },
-    { id: 'smartEmail', name: '智能邮箱' },
     { id: 'finance', name: '付款 & 发票管理' },
     { id: 'reconciliation', name: '工厂月结对账' },
     { id: 'antifake', name: '防伪标管理' },
@@ -34,7 +33,6 @@
     { id: 'home', name: '首页・今日总览', desc: '本周重点、逾期提醒、交付节点和快捷新建工作记录。' },
     { id: 'suppliers', name: '供应商管理', desc: '分供应商记录样品、包装、品质、库存、交期、对接人与历史沟通。' },
     { id: 'orders', name: '采购订单 & 跟进', desc: '采购订单、礼品订单、物流状态、卡扣和辅料配套发货。' },
-    { id: 'smartEmail', name: '智能邮箱', desc: '根据采购订单号自动匹配工厂，生成待回签和已回签采购往来邮件。' },
     { id: 'finance', name: '付款 & 发票管理', desc: '货款付款、发票状态、运研报价与返利核算。' },
     { id: 'reconciliation', name: '工厂月结对账', desc: '按工厂和月份记录账单金额、差异项、确认状态、付款衔接和关闭时间。' },
     { id: 'antifake', name: '防伪标管理', desc: '记录防伪标申请、领用、库存、使用批次、产品关联和异常处理。' },
@@ -55,29 +53,6 @@
     { name: '纯发不良品处理', factory: '纯发', tags: ['不良品数量', '原因', '补发 / 退换 / 折让'] },
     { name: '样品寄送跟进', factory: '多工厂', tags: ['样品名称', '物流单号', '反馈结果'] }
   ];
-
-  // 智能邮箱：本地订单-工厂对应表。后续批量增加订单时，直接按此格式追加即可。
-  var emailOrderFactoryMap = [
-    { orderNo: 'PO202608001', factory: '莱克' },
-    { orderNo: 'PO202608002', factory: '纯发' },
-    { orderNo: 'PO202608003', factory: '纳科达' }
-  ];
-
-  // 智能邮箱：邮件模板配置。新增模板时复制一个对象，补充 subject/body/wechat 即可。
-  var emailTemplates = {
-    pendingSign: {
-      name: '待回签邮件 + 工厂名称 + 订单号',
-      subject: '【采购合同确认】采购订单{{订单号}}确认并回签',
-      body: '您好！\n附件为我司本次采购订单（编号：{{订单号}}），请查收。\n烦请协助以下事项：\n1. 盖章回签：请贵司对订单盖章确认，并将扫描件回传至本邮箱。\n2. 确认交期：请根据订单要求，回复确认最终交期。如有特殊原因无法按期交付，请提前沟通说明。\n\n我方收到贵司盖章回签后，将在第一时间完成盖章并回传给您，以便双方留存归档。\n烦请于{{回复截止日期}}前回复确认，感谢配合。\n\n如有任何疑问，请随时与我联系。\n期待与贵司的合作顺利推进，顺祝商祺！',
-      wechat: '采购单已发，后续下单统一走邮箱。我同步发一份至工作群，请贵司签章回传后，我方完成盖章再安排付款。麻烦确认订单，安排回签及开具发票，谢谢！'
-    },
-    signedReturn: {
-      name: '已回签邮件 + 工厂名称 + 订单号',
-      subject: '采购订单{{订单号}} 双方盖章版合同回传',
-      body: '您好！\n我司已于{{收到回签日期}}，收到贵公司签署并盖章的采购订单回签文件。现随邮件附件，将经我司盖章确认的完整采购订单合同（双方盖章版PDF）回传给您，敬请查收并妥善保管，作为后续合作及结算正式依据。\n\n请贵司收到附件后，确认文件清晰完整，如有任何问题请及时与我们联系。\n\n感谢贵司对本次采购工作的积极配合与支持，期待未来继续与贵司保持高效、愉快的合作。\n顺祝商祺，生意兴隆！',
-      wechat: ''
-    }
-  };
 
   var state = loadState();
   var selectedFactory = '';
@@ -331,7 +306,6 @@
   function inferModule(text) {
     text = text || '';
     var rules = [
-      { id: 'smartEmail', words: ['智能邮箱', '邮件', '邮箱', '回签邮件', '邮件主题', '邮件正文'] },
       { id: 'reconciliation', words: ['月结', '对账', '账期', '账单', '差异项', '核对金额', '工厂账单'] },
       { id: 'antifake', words: ['防伪', '防伪标', '防伪码', '标签领用', '标码', '批次', '领用数量'] },
       { id: 'finance', words: ['付款', '货款', '发票', '锁死', '返利', '报价', '单位转换'] },
@@ -400,7 +374,6 @@
     state.financePayments = Array.isArray(state.financePayments) ? state.financePayments : [];
     state.deletedSuppliers = Array.isArray(state.deletedSuppliers) ? state.deletedSuppliers : [];
     state.operationLogs = Array.isArray(state.operationLogs) ? state.operationLogs : [];
-    state.customEmailTemplates = Array.isArray(state.customEmailTemplates) ? state.customEmailTemplates : [];
     // 【合同迭代新增】合同数据数组
     state.contracts = Array.isArray(state.contracts) ? state.contracts : [];
     // 【莱克专属库存转移】若合同数据为空，自动载入默认合同（含山东莱克科技有限公司），确保供应商名片存在
@@ -687,22 +660,6 @@
     $('completeSelectedOrdersBtn').addEventListener('click', completeSelectedOrders);
     $('deleteSelectedOrdersBtn').addEventListener('click', deleteSelectedOrders);
     $('clearSelectedOrdersBtn').addEventListener('click', clearSelectedOrders);
-    $('emailOrderNo').addEventListener('input', syncEmailFactoryByOrder);
-    $('emailTemplate').addEventListener('change', renderSmartEmail);
-    $('toggleEmailTemplateFormBtn').addEventListener('click', toggleEmailTemplateForm);
-    $('saveEmailTemplateBtn').addEventListener('click', saveCustomEmailTemplate);
-    $('cancelEmailTemplateBtn').addEventListener('click', function () {
-      clearEmailTemplateForm();
-      $('emailTemplateForm').style.display = 'none';
-    });
-    $('emailReplyDeadline').addEventListener('input', renderSmartEmail);
-    $('emailSignedDate').addEventListener('input', renderSmartEmail);
-    $('emailFactory').addEventListener('input', renderSmartEmail);
-    $('emailExtraNote').addEventListener('input', renderSmartEmail);
-    $('renderEmailBtn').addEventListener('click', renderSmartEmail);
-    $('copyEmailSubjectBtn').addEventListener('click', function () { copyTextFromElement('emailSubjectOutput', '邮件主题已复制'); });
-    $('copyEmailBodyBtn').addEventListener('click', function () { copyTextFromElement('emailBodyOutput', '邮件正文已复制'); });
-    $('copyEmailWechatBtn').addEventListener('click', function () { copyTextFromElement('emailWechatOutput', '微信群文案已复制'); });
     $('orderImportModalBackdrop').addEventListener('click', function (e) {
       if (e.target === $('orderImportModalBackdrop')) closeOrderImportModal();
     });
@@ -814,10 +771,7 @@
     $('settlementBillDate').value = toYMD(today());
     $('settlementMonth').value = previousMonthKey(today());
     $('tempPayDueDate').value = toYMD(today());
-    $('emailReplyDeadline').value = toYMD(addDays(today(), 2));
-    $('emailSignedDate').value = toYMD(today());
     syncSettlementPayDue();
-    renderSmartEmail();
     renderAll();
     // 【默认页面迭代】点进去默认显示首页今日总览
     switchSection('home');
@@ -844,35 +798,6 @@
     if ($('filterFactory') && currentFilterFactory && factories.indexOf(currentFilterFactory) >= 0) $('filterFactory').value = currentFilterFactory;
     if (currentAntifakeFactory && factories.indexOf(currentAntifakeFactory) >= 0) $('antifakeMoveFactory').value = currentAntifakeFactory;
     if (currentSettlementFactory && factories.indexOf(currentSettlementFactory) >= 0) $('settlementFactory').value = currentSettlementFactory;
-    renderEmailTemplateOptions();
-  }
-
-  function getAllEmailTemplates() {
-    var all = {};
-    Object.keys(emailTemplates).forEach(function (key) {
-      all[key] = emailTemplates[key];
-    });
-    (state.customEmailTemplates || []).forEach(function (template) {
-      if (!template || !template.id) return;
-      all[template.id] = {
-        name: template.name,
-        subject: template.subject,
-        body: template.body,
-        wechat: template.wechat || ''
-      };
-    });
-    return all;
-  }
-
-  function renderEmailTemplateOptions() {
-    var select = $('emailTemplate');
-    if (!select) return;
-    var current = select.value || 'pendingSign';
-    var all = getAllEmailTemplates();
-    select.innerHTML = Object.keys(all).map(function (key) {
-      return '<option value="' + escapeHTML(key) + '">' + escapeHTML(all[key].name || key) + '</option>';
-    }).join('');
-    select.value = all[current] ? current : 'pendingSign';
   }
 
   function renderNav() {
@@ -4258,9 +4183,6 @@
       note: 'PDF识别来源：' + pendingPdfPurchaseOrderImport.fileName + '；只提取5项汇总字段；合计行：' + (pendingPdfPurchaseOrderImport.summaryLine || '用户手动补齐'),
       weeklyCategory: 'auto'
     }, true);
-    syncEmailOrderFactory(orderNo, supplier);
-    // 【合同迭代新增】PDF采购订单确认后也自动填充智能邮箱
-    autoFillEmailFromOrder(orderNo, supplier);
     saveState();
     renderSelects();
     renderAll();
@@ -5228,9 +5150,6 @@
       }
       if (upsertPurchaseOrderPayment(group, record, amount, parsed.fileName)) updatedPayments++;
     }
-    syncEmailOrderFactory(group.orderNo, group.supplier);
-    // 【合同迭代新增】采购订单确认后自动填充智能邮箱的订单号和供应商名称
-    autoFillEmailFromOrder(group.orderNo, group.supplier);
     saveState();
     renderSelects();
     renderAll();
@@ -5449,18 +5368,6 @@
     payment.history = payment.history || [];
     payment.history.push({ time: payment.updatedAt, action: '已完成采购单更新待付款' });
     return true;
-  }
-
-  function syncEmailOrderFactory(orderNo, supplier) {
-    if (!orderNo || !supplier) return;
-    var found = emailOrderFactoryMap.find(function (item) {
-      return String(item.orderNo || '').trim().toLowerCase() === String(orderNo).trim().toLowerCase();
-    });
-    if (found) {
-      found.factory = supplier;
-    } else {
-      emailOrderFactoryMap.push({ orderNo: orderNo, factory: supplier });
-    }
   }
 
   function onOrderImportSubmit(e) {
@@ -6162,117 +6069,6 @@
     $('weeklyOutput').value = text;
     switchSection('weekly');
     toast('已生成采购周报');
-  }
-
-  function syncEmailFactoryByOrder() {
-    var orderNo = $('emailOrderNo').value.trim();
-    var matched = findEmailOrder(orderNo);
-    if (matched) {
-      $('emailFactory').value = matched.factory;
-      $('emailFactoryMatch').innerHTML = '已匹配：<strong>' + escapeHTML(matched.factory) + '</strong> · 订单号 <span class="mono">' + escapeHTML(matched.orderNo) + '</span>';
-    } else if (orderNo) {
-      $('emailFactoryMatch').textContent = '未在本地订单-工厂表中匹配到该订单号，可手动填写工厂名称，或后续在代码表里补充。';
-    } else {
-      $('emailFactoryMatch').textContent = '请输入订单号，系统会从本地订单-工厂表中匹配合作工厂。';
-    }
-    renderSmartEmail();
-  }
-
-  function toggleEmailTemplateForm() {
-    var form = $('emailTemplateForm');
-    if (!form) return;
-    form.style.display = form.style.display === 'none' || !form.style.display ? 'block' : 'none';
-  }
-
-  function clearEmailTemplateForm() {
-    ['newEmailTemplateName', 'newEmailTemplateSubject', 'newEmailTemplateBody', 'newEmailTemplateWechat'].forEach(function (id) {
-      if ($(id)) $(id).value = '';
-    });
-  }
-
-  function saveCustomEmailTemplate() {
-    var name = $('newEmailTemplateName').value.trim();
-    var subject = $('newEmailTemplateSubject').value.trim();
-    var body = $('newEmailTemplateBody').value.trim();
-    var wechat = $('newEmailTemplateWechat').value.trim();
-    if (!name || !subject || !body) {
-      toast('请填写模板名称、邮件主题和邮件正文');
-      return;
-    }
-    state.customEmailTemplates = Array.isArray(state.customEmailTemplates) ? state.customEmailTemplates : [];
-    var id = 'custom_' + Date.now();
-    state.customEmailTemplates.push({
-      id: id,
-      name: name,
-      subject: subject,
-      body: body,
-      wechat: wechat,
-      createdAt: nowISO()
-    });
-    saveState();
-    renderEmailTemplateOptions();
-    $('emailTemplate').value = id;
-    clearEmailTemplateForm();
-    $('emailTemplateForm').style.display = 'none';
-    renderSmartEmail();
-    toast('邮件模板已保存');
-  }
-
-  function findEmailOrder(orderNo) {
-    var normalized = String(orderNo || '').trim().toLowerCase();
-    if (!normalized) return null;
-    var fixed = emailOrderFactoryMap.find(function (item) {
-      return String(item.orderNo || '').trim().toLowerCase() === normalized;
-    });
-    if (fixed) return fixed;
-    var record = state.records.find(function (r) {
-      return r.module === 'orders' && String(r.orderNo || '').trim().toLowerCase() === normalized && r.factory;
-    });
-    return record ? { orderNo: record.orderNo, factory: record.factory } : null;
-  }
-
-  function renderSmartEmail() {
-    if (!$('emailTemplate')) return;
-    var template = getAllEmailTemplates()[$('emailTemplate').value] || emailTemplates.pendingSign;
-    var values = {
-      '订单号': $('emailOrderNo').value.trim() || '【请填写订单号】',
-      '工厂名称': $('emailFactory').value.trim() || '【请填写工厂名称】',
-      '回复截止日期': formatDate($('emailReplyDeadline').value) || '【请填写回复截止日期】',
-      '收到回签日期': formatDate($('emailSignedDate').value) || '【请填写收到回签日期】'
-    };
-    var subject = fillEmailTemplate(template.subject, values);
-    var body = fillEmailTemplate(template.body, values);
-    body = addSupplierNameBeforeGreeting(body, $('emailFactory').value.trim());
-    var note = $('emailExtraNote').value.trim();
-    if (note) body += '\n\n补充说明：\n' + note;
-    $('emailSubjectOutput').value = subject;
-    $('emailBodyOutput').value = body;
-    $('emailWechatOutput').value = template.wechat ? fillEmailTemplate(template.wechat, values) : '';
-    $('wechatCopyBlock').style.display = template.wechat ? 'block' : 'none';
-  }
-
-  function fillEmailTemplate(text, values) {
-    return String(text || '').replace(/\{\{([^}]+)\}\}/g, function (_, key) {
-      return values[key] || '';
-    });
-  }
-
-  function addSupplierNameBeforeGreeting(body, supplierName) {
-    body = String(body || '');
-    supplierName = String(supplierName || '').trim();
-    if (!supplierName || /【请填写/.test(supplierName)) return body;
-    var lines = body.split('\n');
-    var greetingIndex = -1;
-    for (var i = 0; i < lines.length; i++) {
-      if (/^\s*您好/.test(lines[i])) {
-        greetingIndex = i;
-        break;
-      }
-    }
-    if (greetingIndex < 0) return supplierName + '\n' + body;
-    if (greetingIndex > 0 && lines[greetingIndex - 1].trim() === supplierName) return body;
-    lines.splice(greetingIndex, 0, supplierName);
-    return lines.join('\n');
   }
 
   function copyTextFromElement(id, message) {
@@ -7043,21 +6839,6 @@
     btn.addEventListener('click', function () { openSupplierModal(); });
   }
 
-  /* ========== 【合同迭代新增】采购订单确认后自动填充智能邮箱 ========== */
-  function autoFillEmailFromOrder(orderNo, supplier) {
-    var orderInput = $('emailOrderNo');
-    var factoryInput = $('emailFactory');
-    var matchEl = $('emailFactoryMatch');
-    if (!orderInput || !factoryInput) return;
-    orderInput.value = orderNo || '';
-    factoryInput.value = supplier || '';
-    if (matchEl && orderNo && supplier) {
-      matchEl.innerHTML = '已自动填充：<strong>' + escapeHTML(supplier) + '</strong> · 订单号 <span class="mono">' + escapeHTML(orderNo) + '</span>';
-    }
-    syncEmailFactoryByOrder();
-    renderSmartEmail();
-  }
-
   window.PROCUREMENT_WORKBENCH = {
     storageKey: STORAGE_KEY,
     getState: function () {
@@ -7072,7 +6853,6 @@
       syncFactories();
       saveState();
       renderSelects();
-      renderSmartEmail();
       renderAll();
       toast('已读取云端采购工作台数据');
     },
@@ -7081,7 +6861,6 @@
       ensureStateShape();
       syncFactories();
       renderSelects();
-      renderSmartEmail();
       renderAll();
     },
     toast: toast

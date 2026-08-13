@@ -780,6 +780,190 @@
     }
   }
 
+  /* ========== 手动录入新订单 ========== */
+  var manualRows = [];
+  var MANUAL_CATEGORIES = ['润滑油', '制动液', '空调套装'];
+
+  function emptyManualRow() {
+    return { 品类: '', 工厂: '莱克', 订单号: '', SKU编码: '', 产品名称: '', 下单数量: 0 };
+  }
+
+  function manualRowStatus(row) {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !data.rows) return { exists: false, text: '新增订单', afterRemain: parseNumberLike(row.下单数量) };
+    var key = row.品类 + '|' + row.订单号 + '|' + row.SKU编码;
+    for (var i = 0; i < data.rows.length; i++) {
+      var r = data.rows[i];
+      if (r.品类 + '|' + r.订单号 + '|' + r.SKU编码 === key) {
+        return { exists: true, text: '追加到历史订单', afterRemain: Number(r.工厂总订单 || 0) + parseNumberLike(row.下单数量) - Number(r.已发货数量 || 0) };
+      }
+    }
+    return { exists: false, text: '新增订单', afterRemain: parseNumberLike(row.下单数量) };
+  }
+
+  function renderManualEntry() {
+    var container = document.getElementById('manualEntryContainer');
+    if (!container) return;
+    var html = '<div class="manual-table-wrap"><table><thead><tr>' +
+      '<th>品类</th><th>工厂</th><th>订单号</th><th>SKU编码</th><th>产品名称</th><th>下单数量</th><th>提交后状态</th><th>操作</th>' +
+      '</tr></thead><tbody>';
+    manualRows.forEach(function(r, i) {
+      var st = manualRowStatus(r);
+      var catOptions = MANUAL_CATEGORIES.map(function(c) {
+        return '<option value="' + esc(c) + '"' + (r.品类 === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+      }).join('');
+      var catSelect = '<select class="preview-input" data-manual-field="品类" data-manual-index="' + i + '">' +
+        '<option value=""' + (!r.品类 ? ' selected' : '') + '>请选择</option>' + catOptions + '</select>';
+      var statusCls = st.exists ? 'pill warn' : 'pill ok';
+      html += '<tr>' +
+        '<td>' + catSelect + '</td>' +
+        '<td><input class="preview-input" data-manual-field="工厂" data-manual-index="' + i + '" value="' + esc(r.工厂) + '"></td>' +
+        '<td><input class="preview-input mono" data-manual-field="订单号" data-manual-index="' + i + '" value="' + esc(r.订单号) + '"></td>' +
+        '<td><input class="preview-input mono" data-manual-field="SKU编码" data-manual-index="' + i + '" value="' + esc(r.SKU编码) + '"></td>' +
+        '<td><input class="preview-input" data-manual-field="产品名称" data-manual-index="' + i + '" value="' + esc(r.产品名称) + '"></td>' +
+        '<td><input class="preview-input num" type="number" min="0" step="1" data-manual-field="下单数量" data-manual-index="' + i + '" value="' + esc(r.下单数量) + '"></td>' +
+        '<td><span class="' + statusCls + '">' + esc(st.text) + '</span>；剩余 ' + num(st.afterRemain) + '</td>' +
+        '<td><button type="button" class="preview-delete-btn" data-manual-delete="' + i + '">删除</button></td>' +
+        '</tr>';
+    });
+    if (!manualRows.length) {
+      html += '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">点击下方「添加一行」开始手动录入</td></tr>';
+    }
+    html += '</tbody></table></div>';
+    var noCatCount = manualRows.filter(function(r) { return !r.品类; }).length;
+    var emptyRequired = manualRows.filter(function(r) { return !r.订单号 || !r.SKU编码 || !parseNumberLike(r.下单数量); }).length;
+    var submitDisabled = !manualRows.length || noCatCount > 0 || emptyRequired > 0;
+    var hint = '';
+    if (noCatCount > 0) hint = '有 <strong>' + noCatCount + '</strong> 行未选择品类';
+    else if (emptyRequired > 0) hint = '有 <strong>' + emptyRequired + '</strong> 行缺少订单号、SKU编码或下单数量';
+    else hint = '确认后同一 SKU 会自动追加到已有库存';
+    html += '<div class="update-bar">' +
+      '<button type="button" class="btn-primary" id="addManualRowBtn" style="background:var(--bg2);color:var(--ink);box-shadow:none;border:1px solid var(--rule)">+ 添加一行</button>' +
+      '<button type="button" class="btn-primary" id="applyManualBtn"' + (submitDisabled ? ' disabled' : '') + '>确认提交</button>' +
+      '<button type="button" id="clearManualBtn">清空全部</button>' +
+      '<span class="hint">' + hint + '</span>' +
+      '</div>';
+    container.innerHTML = html;
+    bindManualEvents();
+  }
+
+  function bindManualEvents() {
+    var container = document.getElementById('manualEntryContainer');
+    if (!container) return;
+    container.querySelectorAll('[data-manual-field]').forEach(function(input) {
+      input.addEventListener('change', function() {
+        var idx = parseInt(input.getAttribute('data-manual-index'), 10);
+        var field = input.getAttribute('data-manual-field');
+        if (!manualRows[idx]) return;
+        manualRows[idx][field] = field === '下单数量' ? parseNumberLike(input.value) : input.value.trim();
+        renderManualEntry();
+      });
+    });
+    container.querySelectorAll('[data-manual-delete]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var idx = parseInt(btn.getAttribute('data-manual-delete'), 10);
+        manualRows.splice(idx, 1);
+        renderManualEntry();
+      });
+    });
+    var addBtn = document.getElementById('addManualRowBtn');
+    if (addBtn) addBtn.addEventListener('click', function() {
+      manualRows.push(emptyManualRow());
+      renderManualEntry();
+    });
+    var applyBtn = document.getElementById('applyManualBtn');
+    if (applyBtn) applyBtn.addEventListener('click', applyManualUpdate);
+    var clearBtn = document.getElementById('clearManualBtn');
+    if (clearBtn) clearBtn.addEventListener('click', function() {
+      manualRows = [];
+      renderManualEntry();
+    });
+  }
+
+  function applyManualUpdate() {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !data.rows) return;
+    var validRows = manualRows.filter(function(r) {
+      return r.品类 && r.订单号 && r.SKU编码 && parseNumberLike(r.下单数量) > 0;
+    });
+    if (!validRows.length) {
+      showManualPreview('error', '没有有效的录入行，请检查品类、订单号、SKU编码和下单数量是否填写完整。');
+      return;
+    }
+    var existingMap = {};
+    data.rows.forEach(function(r, i) {
+      var key = r.品类 + '|' + r.订单号 + '|' + r.SKU编码;
+      if (existingMap[key] === undefined) existingMap[key] = i;
+    });
+    var grouped = {};
+    validRows.forEach(function(o) {
+      var key = o.品类 + '|' + o.订单号 + '|' + o.SKU编码;
+      if (!grouped[key]) grouped[key] = { 品类: o.品类, 订单号: o.订单号, SKU编码: o.SKU编码, 产品名称: o.产品名称, 工厂: o.工厂, 数量: 0, 行数: 0 };
+      grouped[key].数量 += parseNumberLike(o.下单数量);
+      grouped[key].行数++;
+      if (o.产品名称 && !grouped[key].产品名称) grouped[key].产品名称 = o.产品名称;
+    });
+    var addedCount = 0, appendedCount = 0;
+    Object.values(grouped).forEach(function(g) {
+      var key = g.品类 + '|' + g.订单号 + '|' + g.SKU编码;
+      if (existingMap[key] !== undefined) {
+        data.rows[existingMap[key]].工厂总订单 += g.数量;
+        data.rows[existingMap[key]].订单原始行数 = (data.rows[existingMap[key]].订单原始行数 || 0) + g.行数;
+        if (g.产品名称 && !data.rows[existingMap[key]].产品名称) data.rows[existingMap[key]].产品名称 = g.产品名称;
+        appendedCount++;
+      } else {
+        data.rows.push({
+          品类: g.品类,
+          工厂: g.工厂 || '莱克',
+          订单号: g.订单号,
+          订单日期: '',
+          SKU编码: g.SKU编码,
+          型号: g.SKU编码,
+          产品名称: g.产品名称,
+          品名: g.产品名称,
+          客户: '',
+          抬头: '',
+          单位: '',
+          单价: 0,
+          总金额: 0,
+          工厂总订单: g.数量,
+          已发货数量: 0,
+          工厂剩余数量: g.数量,
+          发货进度: 0,
+          状态: '待发货',
+          出货次数: 0,
+          最晚发货: '',
+          出货去向: '',
+          订单原始行数: g.行数
+        });
+        addedCount++;
+      }
+    });
+    data.meta.orderSource = '手动录入';
+    data.meta.orderRows = Number(data.meta.orderRows || 0) + validRows.length;
+    data.meta.generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    rebuildSummaries(data);
+    var saved = window.LAIKE_STORAGE && window.LAIKE_STORAGE.save && window.LAIKE_STORAGE.save(false);
+    window.LAIKE_APP.refresh();
+    manualRows = [];
+    renderManualEntry();
+    showManualPreview('success', '<div class="preview-header"><h3>手动录入完成，待一键保存</h3><p>已将手动录入的订单数据更新到库存：新增 <strong>' + addedCount + '</strong> 个 SKU，追加 <strong>' + appendedCount + '</strong> 个已有 SKU。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方"一键保存"同步云端。' : '注意：本地暂存失败，请不要关闭页面。') + '</p></div>');
+    setSaveStatus('已有手动录入更新，待一键保存云端', 'bad');
+    setTimeout(function() {
+      var el = document.getElementById('manualUploadPreview');
+      if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+    }, 5000);
+  }
+
+  function showManualPreview(type, html) {
+    var el = document.getElementById('manualUploadPreview');
+    if (!el) return;
+    el.style.display = 'block';
+    el.className = 'upload-preview ' + (type === 'error' ? 'preview-error' : type === 'success' ? 'preview-success' : '');
+    el.innerHTML = html;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   function init() {
     var shipInput = document.getElementById('shipFileInput');
     var orderInput = document.getElementById('orderFileInput');
@@ -816,6 +1000,7 @@
       });
     }
     if (oneClickSaveBtn) oneClickSaveBtn.addEventListener('click', oneClickSave);
+    renderManualEntry();
   }
 
   function setupDragDrop(zone, input, handler) {
