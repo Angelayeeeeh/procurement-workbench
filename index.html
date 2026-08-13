@@ -2819,6 +2819,86 @@
         </div>
       </section>
 
+      <!-- ========== 智能邮箱 ========== -->
+      <section class="section" data-section="smartEmail">
+        <div class="grid cols-2">
+          <div class="card">
+            <div class="card-header">
+              <h3>邮件生成</h3>
+              <span>订单号匹配供应商后，自动把供应商名称加入"您好"上一行</span>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="field wide">
+                  <label>上传已完成采购单，自动识别订单号和供应商</label>
+                  <div class="upload-dropzone" id="purchaseOrderDropzone" style="border:1.5px dashed var(--rule);border-radius:var(--radius-sm);padding:18px;text-align:center;background:var(--bg2);color:var(--muted);position:relative;">
+                    <input id="purchaseOrderFile" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
+                    <div>
+                      <strong style="display:block;margin-bottom:6px;color:var(--accent-dark);font-size:15px;">拖拽采购单到这里，或点击选择文件</strong>
+                      <span style="display:block;font-size:12px;">支持 Excel / CSV / TSV / TXT，自动识别订单号和供货方</span>
+                    </div>
+                  </div>
+                  <div class="muted" id="purchaseOrderUploadStatus" style="margin-top:8px;font-size:12px;">可先上传采购单，系统会自动识别订单号和供货方，并保存到本页的订单-供应商匹配表。</div>
+                  <div id="purchaseOrderRecognitionResult" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--rule);border-radius:var(--radius-sm);background:var(--bg2);">
+                    <strong>识别结果</strong>
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;">
+                      <div style="padding:9px 10px;border:1px solid var(--rule);border-radius:8px;background:#fff;"><span style="display:block;color:var(--muted);font-size:11px;margin-bottom:4px;">订单号</span><strong id="recognizedOrderNo" style="display:block;color:var(--accent-dark);">-</strong></div>
+                      <div style="padding:9px 10px;border:1px solid var(--rule);border-radius:8px;background:#fff;"><span style="display:block;color:var(--muted);font-size:11px;margin-bottom:4px;">供货方</span><strong id="recognizedFactory" style="display:block;color:var(--accent-dark);">-</strong></div>
+                      <div style="padding:9px 10px;border:1px solid var(--rule);border-radius:8px;background:#fff;"><span style="display:block;color:var(--muted);font-size:11px;margin-bottom:4px;">订单日期</span><strong id="recognizedOrderDate" style="display:block;color:var(--accent-dark);">-</strong></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="field wide">
+                  <label for="emailOrderNo">输入采购订单号</label>
+                  <input id="emailOrderNo" placeholder="例：26IBOC0832-1">
+                  <div class="muted" id="emailFactoryMatch" style="margin-top:6px;font-size:12px;">请输入订单号，系统会从本地订单-供应商表中匹配供应商。</div>
+                  <div class="record-actions" style="margin-top:8px;">
+                    <button class="btn" id="saveOrderFactoryBtn" type="button">保存当前订单-供应商匹配</button>
+                    <button class="btn" id="clearOrderFactoryBtn" type="button">清空当前订单匹配</button>
+                  </div>
+                </div>
+                <div class="field wide">
+                  <label for="emailTemplate">选择邮件模板</label>
+                  <select id="emailTemplate"></select>
+                  <div class="record-actions" style="margin-top:8px;">
+                    <button class="btn" id="toggleEmailTemplateFormBtn" type="button">新增邮件模板</button>
+                  </div>
+                  <div id="emailTemplateForm" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--rule);border-radius:var(--radius-sm);background:var(--bg2);">
+                    <strong>新增自定义邮件模板</strong>
+                    <p class="muted" style="margin:6px 0 10px;font-size:12px;">可使用变量：{{订单号}}、{{工厂名称}}、{{回复截止日期}}、{{收到回签日期}}</p>
+                    <div class="form-grid">
+                      <div class="field wide"><label for="newEmailTemplateName">模板名称</label><input id="newEmailTemplateName" placeholder="例：催回签邮件"></div>
+                      <div class="field wide"><label for="newEmailTemplateSubject">邮件主题</label><input id="newEmailTemplateSubject" placeholder="例：采购订单{{订单号}}回签提醒"></div>
+                      <div class="field wide"><label for="newEmailTemplateBody">邮件正文</label><textarea id="newEmailTemplateBody" placeholder="例：您好！&#10;附件为采购订单{{订单号}}，请查收并回签。"></textarea></div>
+                      <div class="field wide"><label for="newEmailTemplateWechat">微信群同步短句（可选）</label><textarea id="newEmailTemplateWechat" placeholder="可选：需要同步到微信群时填写。"></textarea></div>
+                      <div class="field wide"><div class="record-actions"><button class="btn primary" id="saveEmailTemplateBtn" type="button">保存模板</button><button class="btn" id="cancelEmailTemplateBtn" type="button">取消</button></div></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="field"><label for="emailFactory">供应商名称</label><input id="emailFactory" placeholder="输入订单号后自动填充，可手动修改"></div>
+                <div class="field"><label for="emailReplyDeadline">回复截止日期</label><input id="emailReplyDeadline" type="date"></div>
+                <div class="field"><label for="emailSignedDate">收到回签日期</label><input id="emailSignedDate" type="date"></div>
+                <div class="field wide"><label for="emailExtraNote">备注 / 追加文字</label><textarea id="emailExtraNote" placeholder="可选：这里填写的内容会追加到邮件正文末尾。"></textarea></div>
+                <div class="field wide"><button class="btn primary" id="renderEmailBtn" type="button">一键渲染邮件主题和正文</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3>邮件预览与复制</h3>
+              <span>所有内容生成后仍可直接在下方二次编辑</span>
+            </div>
+            <div class="card-body">
+              <div class="field"><label for="emailSubjectOutput">邮件主题</label><textarea id="emailSubjectOutput" placeholder="生成后的邮件主题" style="min-height:76px;font-weight:700;white-space:pre-wrap;"></textarea></div>
+              <div class="record-actions"><button class="btn" id="copyEmailSubjectBtn" type="button">复制邮件主题</button></div>
+              <div class="field" style="margin-top:12px;"><label for="emailBodyOutput">邮件正文</label><textarea id="emailBodyOutput" placeholder="生成后的邮件正文" style="min-height:190px;white-space:pre-wrap;line-height:1.7;"></textarea></div>
+              <div class="record-actions"><button class="btn" id="copyEmailBodyBtn" type="button">复制邮件正文</button></div>
+              <div class="field" id="wechatCopyBlock" style="margin-top:12px;"><label for="emailWechatOutput">微信群同步短句</label><textarea id="emailWechatOutput" placeholder="模板包含微信群文案时显示" style="min-height:76px;white-space:pre-wrap;"></textarea><div class="record-actions" style="margin-top:8px;"><button class="btn" id="copyEmailWechatBtn" type="button">复制微信群文案</button></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="section" data-section="projects">
         <div class="grid cols-3" id="projectCards"><div class="factory-card project-card clickable-card" role="button" tabindex="0" data-project-index="0" data-project-record-id="Rmsg5qwzh2IN1I" title="点击编辑或补充这个项目"><div><h4>莱克机油 T7/T9</h4><p>莱克 · 未完成 1 项</p><div class="pill-row" style="margin-top:8px;"><span class="pill">生产进度</span><span class="pill">交期</span><span class="pill">发货</span><span class="pill">异常反馈</span></div></div><div><span class="status doing">推进中</span></div></div><div class="factory-card project-card clickable-card" role="button" tabindex="0" data-project-index="1" data-project-record-id="" title="点击编辑或补充这个项目"><div><h4>莱克防冻液标贴</h4><p>莱克 · 未完成 0 项</p><div class="pill-row" style="margin-top:8px;"><span class="pill">标贴确认</span><span class="pill">包装资料</span><span class="pill">打样进度</span></div></div><div><span class="status pending">待补充</span></div></div><div class="factory-card project-card clickable-card" role="button" tabindex="0" data-project-index="2" data-project-record-id="Rmsg5qwzhDZXGG" title="点击编辑或补充这个项目"><div><h4>纯发雨刷 LOGO 改版</h4><p>纯发 · 未完成 1 项</p><div class="pill-row" style="margin-top:8px;"><span class="pill">LOGO 版本</span><span class="pill">确认状态</span><span class="pill">旧版处理</span></div></div><div><span class="status doing">推进中</span></div></div><div class="factory-card project-card clickable-card" role="button" tabindex="0" data-project-index="3" data-project-record-id="" title="点击编辑或补充这个项目"><div><h4>纯发不良品处理</h4><p>纯发 · 未完成 0 项</p><div class="pill-row" style="margin-top:8px;"><span class="pill">不良品数量</span><span class="pill">原因</span><span class="pill">补发 / 退换 / 折让</span></div></div><div><span class="status pending">待补充</span></div></div><div class="factory-card project-card clickable-card" role="button" tabindex="0" data-project-index="4" data-project-record-id="" title="点击编辑或补充这个项目"><div><h4>样品寄送跟进</h4><p>多工厂 · 未完成 0 项</p><div class="pill-row" style="margin-top:8px;"><span class="pill">样品名称</span><span class="pill">物流单号</span><span class="pill">反馈结果</span></div></div><div><span class="status pending">待补充</span></div></div></div>
         <div class="card" style="margin-top:14px;">

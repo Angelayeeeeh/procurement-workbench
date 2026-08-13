@@ -37,6 +37,7 @@
     { id: 'reconciliation', name: '工厂月结对账', desc: '按工厂和月份记录账单金额、差异项、确认状态、付款衔接和关闭时间。' },
     { id: 'antifake', name: '防伪标管理', desc: '记录防伪标申请、领用、库存、使用批次、产品关联和异常处理。' },
     { id: 'weekly', name: '周报管理', desc: '工作日持续录入，按本周记录生成精简采购周报。' },
+    { id: 'smartEmail', name: '智能邮箱', desc: '采购订单确认后自动填充订单号和供应商，一键生成回签邮件。' },
     { id: 'projects', name: '项目专项跟进', desc: '莱克机油 T7/T9、防冻液标贴、纯发雨刷 LOGO、不良品和样品寄送。' }
   ];
   var statuses = [
@@ -374,6 +375,9 @@
     state.financePayments = Array.isArray(state.financePayments) ? state.financePayments : [];
     state.deletedSuppliers = Array.isArray(state.deletedSuppliers) ? state.deletedSuppliers : [];
     state.operationLogs = Array.isArray(state.operationLogs) ? state.operationLogs : [];
+    // 【智能邮箱】订单-供应商匹配表和自定义邮件模板
+    state.emailOrderFactoryMap = Array.isArray(state.emailOrderFactoryMap) ? state.emailOrderFactoryMap : [];
+    state.customEmailTemplates = Array.isArray(state.customEmailTemplates) ? state.customEmailTemplates : [];
     // 【合同迭代新增】合同数据数组
     state.contracts = Array.isArray(state.contracts) ? state.contracts : [];
     // 【莱克专属库存转移】若合同数据为空，自动载入默认合同（含山东莱克科技有限公司），确保供应商名片存在
@@ -772,6 +776,7 @@
     $('settlementMonth').value = previousMonthKey(today());
     $('tempPayDueDate').value = toYMD(today());
     syncSettlementPayDue();
+    initSmartEmail();
     renderAll();
     // 【默认页面迭代】点进去默认显示首页今日总览
     switchSection('home');
@@ -798,6 +803,361 @@
     if ($('filterFactory') && currentFilterFactory && factories.indexOf(currentFilterFactory) >= 0) $('filterFactory').value = currentFilterFactory;
     if (currentAntifakeFactory && factories.indexOf(currentAntifakeFactory) >= 0) $('antifakeMoveFactory').value = currentAntifakeFactory;
     if (currentSettlementFactory && factories.indexOf(currentSettlementFactory) >= 0) $('settlementFactory').value = currentSettlementFactory;
+    renderEmailTemplateOptions();
+  }
+
+  /* ========== 智能邮箱 ========== */
+  var emailDefaultTemplates = {
+    pendingSign: {
+      name: '待回签邮件 + 工厂名称 + 订单号',
+      subject: '【采购合同确认】采购订单{{订单号}}确认并回签',
+      body: '您好！\n附件为我司本次采购订单（编号：{{订单号}}），请查收。\n烦请协助以下事项：\n1. 盖章回签：请贵司对订单盖章确认，并将扫描件回传至本邮箱。\n2. 确认交期：请根据订单要求，回复确认最终交期。如有特殊原因无法按期交付，请提前沟通说明。\n\n我方收到贵司盖章回签后，将在第一时间完成盖章并回传给您，以便双方留存归档。\n烦请于{{回复截止日期}}前回复确认，感谢配合。\n\n如有任何疑问，请随时与我联系。\n期待与贵司的合作顺利推进，顺祝商祺！',
+      wechat: '采购单已发，后续下单统一走邮箱。我同步发一份至工作群，请贵司签章回传后，我方完成盖章再安排付款。麻烦确认订单，安排回签及开具发票，谢谢！'
+    },
+    signedReturn: {
+      name: '已回签邮件 + 工厂名称 + 订单号',
+      subject: '采购订单{{订单号}} 双方盖章版合同回传',
+      body: '您好！\n我司已于{{收到回签日期}}，收到贵公司签署并盖章的采购订单回签文件。现随邮件附件，将经我司盖章确认的完整采购订单合同（双方盖章版PDF）回传给您，敬请查收并妥善保管，作为后续合作及结算正式依据。\n\n请贵司收到附件后，确认文件清晰完整，如有任何问题请及时与我们联系。\n\n感谢贵司对本次采购工作的积极配合与支持，期待未来继续与贵司保持高效、愉快的合作。\n顺祝商祺，生意兴隆！',
+      wechat: ''
+    }
+  };
+
+  function getAllEmailTemplates() {
+    var all = {};
+    Object.keys(emailDefaultTemplates).forEach(function (key) { all[key] = emailDefaultTemplates[key]; });
+    (state.customEmailTemplates || []).forEach(function (template) {
+      if (!template || !template.id) return;
+      all[template.id] = template;
+    });
+    return all;
+  }
+
+  function renderEmailTemplateOptions() {
+    var select = $('emailTemplate');
+    if (!select) return;
+    var current = select.value || 'pendingSign';
+    var all = getAllEmailTemplates();
+    select.innerHTML = Object.keys(all).map(function (key) {
+      return '<option value="' + escapeHTML(key) + '">' + escapeHTML(all[key].name || key) + '</option>';
+    }).join('');
+    select.value = all[current] ? current : 'pendingSign';
+  }
+
+  function findEmailOrder(orderNo) {
+    var normalized = String(orderNo || '').trim().toLowerCase();
+    if (!normalized) return null;
+    var list = state.emailOrderFactoryMap || [];
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].orderNo || '').trim().toLowerCase() === normalized) return list[i];
+    }
+    return null;
+  }
+
+  function syncEmailFactoryByOrder() {
+    var orderNo = $('emailOrderNo').value.trim();
+    var matched = findEmailOrder(orderNo);
+    if (matched) {
+      $('emailFactory').value = matched.factory;
+      $('emailFactoryMatch').innerHTML = '已匹配：<strong>' + escapeHTML(matched.factory) + '</strong> · 订单号 <span class="mono">' + escapeHTML(matched.orderNo) + '</span>';
+    } else if (orderNo) {
+      $('emailFactoryMatch').textContent = '未匹配到该订单号，可手动填写供应商名称，并点击"保存当前订单-供应商匹配"。';
+    } else {
+      $('emailFactoryMatch').textContent = '请输入订单号，系统会从本地订单-供应商表中匹配供应商。';
+    }
+    renderSmartEmail();
+  }
+
+  function saveOrderFactoryMatch() {
+    var orderNo = $('emailOrderNo').value.trim();
+    var factory = $('emailFactory').value.trim();
+    if (!orderNo || !factory) { toast('请先填写订单号和供应商名称'); return; }
+    state.emailOrderFactoryMap = Array.isArray(state.emailOrderFactoryMap) ? state.emailOrderFactoryMap : [];
+    var found = state.emailOrderFactoryMap.find(function (item) {
+      return String(item.orderNo || '').trim().toLowerCase() === orderNo.toLowerCase();
+    });
+    if (found) { found.factory = factory; } else { state.emailOrderFactoryMap.push({ orderNo: orderNo, factory: factory }); }
+    saveState();
+    syncEmailFactoryByOrder();
+    toast('订单-供应商匹配已保存');
+  }
+
+  function clearOrderFactoryMatch() {
+    var orderNo = $('emailOrderNo').value.trim();
+    if (!orderNo) { toast('请先输入订单号'); return; }
+    state.emailOrderFactoryMap = (state.emailOrderFactoryMap || []).filter(function (item) {
+      return String(item.orderNo || '').trim().toLowerCase() !== orderNo.toLowerCase();
+    });
+    saveState();
+    $('emailFactoryMatch').textContent = '当前订单匹配已清空，可手动填写供应商名称后重新保存。';
+    toast('当前订单匹配已清空');
+  }
+
+  function toggleEmailTemplateForm() {
+    var form = $('emailTemplateForm');
+    if (!form) return;
+    form.style.display = form.style.display === 'block' ? 'none' : 'block';
+  }
+
+  function clearEmailTemplateForm() {
+    ['newEmailTemplateName', 'newEmailTemplateSubject', 'newEmailTemplateBody', 'newEmailTemplateWechat'].forEach(function (id) {
+      if ($(id)) $(id).value = '';
+    });
+  }
+
+  function saveCustomEmailTemplate() {
+    var name = $('newEmailTemplateName').value.trim();
+    var subject = $('newEmailTemplateSubject').value.trim();
+    var body = $('newEmailTemplateBody').value.trim();
+    var wechat = $('newEmailTemplateWechat').value.trim();
+    if (!name || !subject || !body) { toast('请填写模板名称、邮件主题和邮件正文'); return; }
+    var id = 'custom_' + Date.now();
+    state.customEmailTemplates = Array.isArray(state.customEmailTemplates) ? state.customEmailTemplates : [];
+    state.customEmailTemplates.push({ id: id, name: name, subject: subject, body: body, wechat: wechat, createdAt: nowISO() });
+    saveState();
+    renderEmailTemplateOptions();
+    $('emailTemplate').value = id;
+    clearEmailTemplateForm();
+    $('emailTemplateForm').style.display = 'none';
+    renderSmartEmail();
+    toast('邮件模板已保存');
+  }
+
+  function fillEmailTemplate(text, values) {
+    return String(text || '').replace(/\{\{([^}]+)\}\}/g, function (_, key) { return values[key] || ''; });
+  }
+
+  function formatEmailDate(value) {
+    if (!value) return '';
+    var parts = String(value).split('-');
+    if (parts.length === 3) return parts[0] + '年' + Number(parts[1]) + '月' + Number(parts[2]) + '日';
+    return value;
+  }
+
+  function addSupplierNameBeforeGreeting(body, supplierName) {
+    body = String(body || '');
+    supplierName = String(supplierName || '').trim();
+    if (!supplierName || /【请填写/.test(supplierName)) return body;
+    var lines = body.split('\n');
+    var greetingIndex = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (/^\s*您好/.test(lines[i])) { greetingIndex = i; break; }
+    }
+    if (greetingIndex < 0) return supplierName + '\n' + body;
+    if (greetingIndex > 0 && lines[greetingIndex - 1].trim() === supplierName) return body;
+    lines.splice(greetingIndex, 0, supplierName);
+    return lines.join('\n');
+  }
+
+  function renderSmartEmail() {
+    if (!$('emailTemplate')) return;
+    var template = getAllEmailTemplates()[$('emailTemplate').value] || emailDefaultTemplates.pendingSign;
+    var values = {
+      '订单号': $('emailOrderNo').value.trim() || '【请填写订单号】',
+      '工厂名称': $('emailFactory').value.trim() || '【请填写供应商名称】',
+      '回复截止日期': formatEmailDate($('emailReplyDeadline').value) || '【请填写回复截止日期】',
+      '收到回签日期': formatEmailDate($('emailSignedDate').value) || '【请填写收到回签日期】'
+    };
+    var subject = fillEmailTemplate(template.subject, values);
+    var body = fillEmailTemplate(template.body, values);
+    body = addSupplierNameBeforeGreeting(body, $('emailFactory').value.trim());
+    var note = $('emailExtraNote').value.trim();
+    if (note) body += '\n\n补充说明：\n' + note;
+    $('emailSubjectOutput').value = subject;
+    $('emailBodyOutput').value = body;
+    $('emailWechatOutput').value = template.wechat ? fillEmailTemplate(template.wechat, values) : '';
+    $('wechatCopyBlock').style.display = template.wechat ? 'block' : 'none';
+  }
+
+  function copyTextFromElement(id, message) {
+    var el = $(id);
+    if (!el) return;
+    var text = el.value || el.textContent || '';
+    if (!text.trim()) { toast('暂无可复制内容'); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast(message); }).catch(function () { fallbackCopy(text, message); });
+    } else { fallbackCopy(text, message); }
+  }
+
+  function fallbackCopy(text, message) {
+    var temp = document.createElement('textarea');
+    temp.value = text;
+    temp.style.position = 'fixed';
+    temp.style.left = '-9999px';
+    document.body.appendChild(temp);
+    temp.select();
+    document.execCommand('copy');
+    document.body.removeChild(temp);
+    toast(message);
+  }
+
+  function onPurchaseOrderFileChange(e) {
+    var file = e.target.files && e.target.files[0];
+    handlePurchaseOrderFile(file);
+  }
+
+  function handlePurchaseOrderFile(file) {
+    if (!file) return;
+    var name = file.name || '';
+    $('purchaseOrderUploadStatus').textContent = '正在识别采购单：' + name;
+    if (/\.(xlsx|xls)$/i.test(name)) {
+      if (!window.XLSX) {
+        $('purchaseOrderUploadStatus').textContent = 'Excel 解析库未加载，请确认 xlsx.full.min.js 已加载。';
+        renderPurchaseOrderRecognitionResult({ orderNo: '', factory: '', orderDate: '' }, false);
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var workbook = XLSX.read(reader.result, { type: 'array', cellDates: true });
+          var rows = [];
+          workbook.SheetNames.forEach(function (sheetName) {
+            rows = rows.concat(XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, raw: false, defval: '' }));
+          });
+          applyPurchaseOrderRecognition(rows, name);
+        } catch (err) {
+          $('purchaseOrderUploadStatus').textContent = '采购单识别失败：' + err.message;
+          renderPurchaseOrderRecognitionResult({ orderNo: '', factory: '', orderDate: '' }, false);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+      return;
+    }
+    var textReader = new FileReader();
+    textReader.onload = function () {
+      applyPurchaseOrderRecognition(parseDelimitedRows(String(textReader.result || '')), name);
+    };
+    textReader.readAsText(file, 'utf-8');
+  }
+
+  function setupPurchaseOrderDropzone() {
+    var zone = $('purchaseOrderDropzone');
+    if (!zone) return;
+    ['dragenter', 'dragover'].forEach(function (eventName) {
+      zone.addEventListener(eventName, function (e) { e.preventDefault(); e.stopPropagation(); zone.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(function (eventName) {
+      zone.addEventListener(eventName, function (e) { e.preventDefault(); e.stopPropagation(); zone.classList.remove('dragover'); });
+    });
+    zone.addEventListener('drop', function (e) {
+      var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      handlePurchaseOrderFile(file);
+    });
+  }
+
+  function cleanCellValue(value) {
+    return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+  }
+
+  function applyPurchaseOrderRecognition(rows, fileName) {
+    var result = recognizePurchaseOrderIdentity(rows, fileName);
+    if (!result.orderNo || !result.factory) {
+      $('purchaseOrderUploadStatus').textContent = '未识别到完整的订单号和供货方，请检查采购单是否包含"订单号/IBOC"和"供货方"。';
+      renderPurchaseOrderRecognitionResult(result, false);
+      toast('采购单识别不完整');
+      return;
+    }
+    $('emailOrderNo').value = result.orderNo;
+    $('emailFactory').value = result.factory;
+    saveOrderFactoryMatch();
+    $('purchaseOrderUploadStatus').innerHTML = '已识别并保存：<strong>' + escapeHTML(result.factory) + '</strong> · 订单号 <strong>' + escapeHTML(result.orderNo) + '</strong>' + (result.orderDate ? ' · 订单日期 ' + escapeHTML(result.orderDate) : '');
+    renderPurchaseOrderRecognitionResult(result, true);
+    renderSmartEmail();
+  }
+
+  function renderPurchaseOrderRecognitionResult(result, success) {
+    result = result || {};
+    var el = $('purchaseOrderRecognitionResult');
+    if (!el) return;
+    el.style.display = 'block';
+    $('recognizedOrderNo').textContent = result.orderNo || '未识别';
+    $('recognizedFactory').textContent = result.factory || '未识别';
+    $('recognizedOrderDate').textContent = result.orderDate || '未识别';
+    el.style.borderColor = success ? 'var(--accent)' : 'var(--bad)';
+  }
+
+  function recognizePurchaseOrderIdentity(rows, fileName) {
+    rows = (rows || []).filter(function (row) { return row && row.some(function (cell) { return cleanCellValue(cell); }); });
+    return {
+      orderNo: detectLabeledValue(rows, fileName, ['订单号', '订单编号', '采购订单号', '采购单号', 'IBOC号', 'IBOC号码', 'IBOC', 'PO']),
+      orderDate: detectLabeledValue(rows, fileName, ['订单日期', '订货日期', '下单日期', '采购日期', '日期']),
+      factory: detectLabeledValue(rows, fileName, ['供货方', '供应商名称', '供应商', '供方', '卖方', '工厂', '厂家'])
+    };
+  }
+
+  function detectLabeledValue(rows, fileName, labels) {
+    for (var r = 0; r < (rows || []).length && r < 28; r++) {
+      var row = rows[r] || [];
+      for (var c = 0; c < row.length; c++) {
+        var cell = cleanCellValue(row[c]);
+        if (!cell) continue;
+        for (var k = 0; k < labels.length; k++) {
+          var label = labels[k];
+          var exact = cell.match(new RegExp('^' + label + '\\s*[:：]?\\s*(.*)$'));
+          if (!exact) continue;
+          if (cleanCellValue(exact[1])) return cleanCellValue(exact[1]).replace(/[，,。;；]+$/, '');
+          for (var next = c + 1; next < row.length; next++) {
+            var v = cleanCellValue(row[next]);
+            if (!v) continue;
+            if (/^(订单号|订单日期|订货日期|购货方|供货方|地址|联系人|电话|邮箱|交货日期|交货地点|付款方式)[:：]?$/.test(v)) break;
+            return v.replace(/[，,。;；]+$/, '');
+          }
+        }
+      }
+    }
+    var text = [fileName || ''].concat((rows || []).slice(0, 24).map(function (row) { return (row || []).join(' '); })).join(' ');
+    for (var i = 0; i < labels.length; i++) {
+      var re = new RegExp(labels[i] + '[:：\\s]*([^\\s]+(?:\\s*[^\\s:：]+){0,8})');
+      var match = text.match(re);
+      if (match) return cleanCellValue(match[1]).replace(/[，,。;；]+$/, '');
+    }
+    return '';
+  }
+
+  function initSmartEmail() {
+    renderEmailTemplateOptions();
+    setupPurchaseOrderDropzone();
+    if ($('purchaseOrderFile')) $('purchaseOrderFile').addEventListener('change', onPurchaseOrderFileChange);
+    if ($('emailOrderNo')) $('emailOrderNo').addEventListener('input', syncEmailFactoryByOrder);
+    if ($('emailFactory')) $('emailFactory').addEventListener('input', renderSmartEmail);
+    if ($('emailTemplate')) $('emailTemplate').addEventListener('change', renderSmartEmail);
+    if ($('emailReplyDeadline')) $('emailReplyDeadline').addEventListener('input', renderSmartEmail);
+    if ($('emailSignedDate')) $('emailSignedDate').addEventListener('input', renderSmartEmail);
+    if ($('emailExtraNote')) $('emailExtraNote').addEventListener('input', renderSmartEmail);
+    if ($('renderEmailBtn')) $('renderEmailBtn').addEventListener('click', renderSmartEmail);
+    if ($('saveOrderFactoryBtn')) $('saveOrderFactoryBtn').addEventListener('click', saveOrderFactoryMatch);
+    if ($('clearOrderFactoryBtn')) $('clearOrderFactoryBtn').addEventListener('click', clearOrderFactoryMatch);
+    if ($('toggleEmailTemplateFormBtn')) $('toggleEmailTemplateFormBtn').addEventListener('click', toggleEmailTemplateForm);
+    if ($('saveEmailTemplateBtn')) $('saveEmailTemplateBtn').addEventListener('click', saveCustomEmailTemplate);
+    if ($('cancelEmailTemplateBtn')) $('cancelEmailTemplateBtn').addEventListener('click', function () { clearEmailTemplateForm(); $('emailTemplateForm').style.display = 'none'; });
+    if ($('copyEmailSubjectBtn')) $('copyEmailSubjectBtn').addEventListener('click', function () { copyTextFromElement('emailSubjectOutput', '邮件主题已复制'); });
+    if ($('copyEmailBodyBtn')) $('copyEmailBodyBtn').addEventListener('click', function () { copyTextFromElement('emailBodyOutput', '邮件正文已复制'); });
+    if ($('copyEmailWechatBtn')) $('copyEmailWechatBtn').addEventListener('click', function () { copyTextFromElement('emailWechatOutput', '微信群文案已复制'); });
+    if ($('emailReplyDeadline')) $('emailReplyDeadline').value = toYMD(addDays(today(), 2));
+    if ($('emailSignedDate')) $('emailSignedDate').value = toYMD(today());
+    renderSmartEmail();
+  }
+
+  /* ========== 采购订单确认后自动填充智能邮箱 ========== */
+  function autoFillEmailFromOrder(orderNo, supplier) {
+    var orderInput = $('emailOrderNo');
+    var factoryInput = $('emailFactory');
+    var matchEl = $('emailFactoryMatch');
+    if (!orderInput || !factoryInput) return;
+    orderInput.value = orderNo || '';
+    factoryInput.value = supplier || '';
+    // 保存到订单-供应商匹配表
+    if (orderNo && supplier) {
+      state.emailOrderFactoryMap = Array.isArray(state.emailOrderFactoryMap) ? state.emailOrderFactoryMap : [];
+      var found = state.emailOrderFactoryMap.find(function (item) {
+        return String(item.orderNo || '').trim().toLowerCase() === String(orderNo).trim().toLowerCase();
+      });
+      if (found) { found.factory = supplier; } else { state.emailOrderFactoryMap.push({ orderNo: orderNo, factory: supplier }); }
+      saveState();
+    }
+    if (matchEl && orderNo && supplier) {
+      matchEl.innerHTML = '已自动填充：<strong>' + escapeHTML(supplier) + '</strong> · 订单号 <span class="mono">' + escapeHTML(orderNo) + '</span>';
+    }
+    renderSmartEmail();
   }
 
   function renderNav() {
@@ -866,6 +1226,7 @@
     renderTables();
     renderOperationLogPanel();
     renderContractExpiry();
+    renderSmartEmail();
   }
 
   function renderMetrics() {
@@ -4186,6 +4547,7 @@
     saveState();
     renderSelects();
     renderAll();
+    autoFillEmailFromOrder(orderNo, supplier);
     pendingPdfPurchaseOrderImport = null;
     if ($('purchaseOrderUploadPreview')) $('purchaseOrderUploadPreview').style.display = 'none';
     toast('PDF 采购订单已追加保存到采购订单跟进列表');
@@ -5153,6 +5515,7 @@
     saveState();
     renderSelects();
     renderAll();
+    autoFillEmailFromOrder(group.orderNo, group.supplier);
     pendingPurchaseOrderImport = null;
     previewAntifakeRatio = null;
     if ($('purchaseOrderUploadPreview')) $('purchaseOrderUploadPreview').style.display = 'none';
