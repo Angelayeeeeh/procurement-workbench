@@ -78,6 +78,19 @@
   ensureStateShape();
   syncFactories();
 
+  // 【防伪标数量修正】一次性将山东莱克科技有限公司（及莱克）防伪标剩余数量修正为 10051
+  (function () {
+    var fixFlag = 'antifakeLaikeStockFix_v1';
+    if (!localStorage.getItem(fixFlag)) {
+      if (state.antifakeStock && typeof state.antifakeStock === 'object') {
+        state.antifakeStock['山东莱克科技有限公司'] = 10051;
+        state.antifakeStock['莱克'] = 10051;
+      }
+      localStorage.setItem(fixFlag, '1');
+      saveState();
+    }
+  })();
+
   function $(id) {
     return document.getElementById(id);
   }
