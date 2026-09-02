@@ -148,7 +148,7 @@
     return cols;
   }
 
-  var ORDER_CATEGORIES = ['润滑油', '制动液', '空调套装'];
+  var ORDER_CATEGORIES = ['润滑油', '制动液', '空调套装', '防冻液', '柴机油'];
 
   function detectOrderCols(headers) {
     var cols = {};
@@ -782,7 +782,7 @@
 
   /* ========== 手动录入新订单 ========== */
   var manualRows = [];
-  var MANUAL_CATEGORIES = ['润滑油', '制动液', '空调套装'];
+  var MANUAL_CATEGORIES = ['润滑油', '制动液', '空调套装', '防冻液', '柴机油'];
 
   function emptyManualRow() {
     return { 品类: '', 工厂: '莱克', 订单号: '', SKU编码: '', 产品名称: '', 下单数量: 0 };

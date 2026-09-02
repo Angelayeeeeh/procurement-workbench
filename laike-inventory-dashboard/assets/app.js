@@ -137,7 +137,7 @@
     var data = window.LAIKE_DASHBOARD_DATA;
     var board = document.getElementById('focusSkuBoard');
     if (!board) return;
-    var focusCats = ['制动液', '空调套装'];
+    var focusCats = data.categorySummary.map(function(c) { return c.品类; });
     board.innerHTML = focusCats.map(function(cat) {
       var rows = data.skuSummary.filter(function(r) { return r.品类 === cat; });
       if (!rows.length) {
