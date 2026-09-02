@@ -17,6 +17,7 @@
     });
   }
   function num(v) { return Number(v || 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 }); }
+  function money(v) { return Number(v || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function fmtDate(v) {
     if (!v) return '';
     if (v instanceof Date) {
@@ -1099,9 +1100,9 @@
           '<td>' + esc(r.规格) + '</td>' +
           '<td>' + esc(r.单位) + '</td>' +
           '<td class="num">' + num(r.工厂剩余数量) + '</td>' +
-          '<td class="num">' + num(r.原单价) + '</td>' +
+          '<td class="num">' + money(r.原单价) + '</td>' +
           '<td><input class="preview-input num" type="number" min="0" step="0.01" data-pv-field="新成本" data-pv-index="' + i + '" value="' + esc(r.新成本) + '"></td>' +
-          '<td class="num" style="color:var(--accent);font-weight:700">¥' + num(Math.round(newBalance)) + '</td>' +
+          '<td class="num" style="color:var(--accent);font-weight:700">¥' + money(newBalance) + '</td>' +
           '<td>' + (r.matched ? (changed ? '<span class="pill warn">将更新</span>' : '<span class="pill ok">已一致</span>') : '<span class="pill bad">未匹配</span>') + '</td>' +
         '</tr>';
       });
@@ -1109,7 +1110,7 @@
       if (willUpdateCount > 0) {
         var totalNewBalance = rows.filter(function(r) { return r.matched && r.新成本 > 0; }).reduce(function(s, r) { return s + r.工厂剩余数量 * r.新成本; }, 0);
         html += '<div style="margin-top:12px;text-align:center">' +
-          '<p style="margin-bottom:8px">本次匹配行更新后预计余额合计：<strong style="color:var(--accent);font-size:16px">¥' + num(Math.round(totalNewBalance)) + '</strong></p>' +
+          '<p style="margin-bottom:8px">本次匹配行更新后预计余额合计：<strong style="color:var(--accent);font-size:16px">¥' + money(totalNewBalance) + '</strong></p>' +
           '<button type="button" class="btn-primary" id="confirmPriceVerifyBtn">确认更新单价（仅更新 ' + willUpdateCount + ' 行的单价，不修改数量）</button>' +
           ' <button type="button" class="btn-secondary" id="cancelPriceVerifyBtn">取消</button>' +
           '</div>';
@@ -1175,7 +1176,7 @@
     if (el) { el.style.display = 'none'; el.innerHTML = ''; }
     state.priceVerifyRows = [];
     var totalBalance = data.summary.剩余库存余额 || 0;
-    showPreview('success', '<div class="preview-header"><h3>单价核对完成</h3><p>已更新 <strong>' + updatedCount + '</strong> 个SKU行的单价（成本）数据。库存数量未做任何修改。当前剩余库存余额：<strong>¥' + num(Math.round(totalBalance)) + '</strong>。' + (saved ? '已暂存，请点击下方"一键保存"同步云端。' : '') + '</p></div>');
+    showPreview('success', '<div class="preview-header"><h3>单价核对完成</h3><p>已更新 <strong>' + updatedCount + '</strong> 个SKU行的单价（成本）数据。库存数量未做任何修改。当前剩余库存余额：<strong>¥' + money(totalBalance) + '</strong>。' + (saved ? '已暂存，请点击下方"一键保存"同步云端。' : '') + '</p></div>');
     setSaveStatus('单价已更新，待一键保存云端', 'bad');
     setTimeout(function() {
       var el = document.getElementById('uploadPreview');
