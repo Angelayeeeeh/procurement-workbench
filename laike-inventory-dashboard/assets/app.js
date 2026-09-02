@@ -125,6 +125,7 @@
     document.getElementById('statOrdered').textContent = num(data.summary.工厂总订单);
     document.getElementById('statShipped').textContent = num(data.summary.已发货数量);
     document.getElementById('statRemaining').textContent = num(data.summary.工厂剩余数量);
+    document.getElementById('statBalance').textContent = '¥' + num(Math.round(data.summary.剩余库存余额 || 0));
     document.getElementById('unmatchedCount').textContent = num(data.summary.未匹配出货行数 || (data.unmatched ? data.unmatched.length : 0));
   }
 
@@ -146,9 +147,10 @@
         '<div class="name">' + esc(c.品类) + '</div>' +
         '<p>SKU数：' + num(c.SKU数) + '；订单SKU行：' + num(c.订单SKU行) + '</p>' +
         '<div class="mini-metrics">' +
-        '<div><strong>' + num(c.工厂总订单) + '</strong><span>工厂总订单</span></div>' +
-        '<div><strong>' + num(c.已发货数量) + '</strong><span>已发货数量</span></div>' +
-        '<div><strong>' + num(c.工厂剩余数量) + '</strong><span>工厂剩余数量</span></div>' +
+        '<div><span>工厂总订单</span><strong>' + num(c.工厂总订单) + '</strong></div>' +
+        '<div><span>已发货数量</span><strong>' + num(c.已发货数量) + '</strong></div>' +
+        '<div><span>工厂剩余数量</span><strong>' + num(c.工厂剩余数量) + '</strong></div>' +
+        '<div class="metric-balance"><span>剩余库存余额</span><strong>¥' + num(Math.round(c.剩余库存余额 || 0)) + '</strong></div>' +
         '</div>' +
         '</article>';
     }).join('');
@@ -268,7 +270,7 @@
 
     orderBody.innerHTML = data.orderSummary.map(function(r) {
       var remainCls = r.工厂剩余数量 <= 0 ? ' neg' : '';
-      return '<tr><td>' + esc(r.品类) + '</td><td class="mono">' + esc(r.订单号) + '</td><td class="num">' + num(r.工厂总订单) + '</td><td class="num">' + num(r.已发货数量) + '</td><td class="num' + remainCls + '">' + num(r.工厂剩余数量) + '</td><td class="num">' + num(r.SKU行数) + '</td><td>' + pill(r.状态) + '</td><td><button class="btn-del-order" data-order="' + esc(r.订单号) + '" data-cat="' + esc(r.品类) + '" type="button" style="background:#fee;border:1px solid #c33;color:#c33;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px;">删除</button></td></tr>';
+      return '<tr><td>' + esc(r.品类) + '</td><td class="mono">' + esc(r.订单号) + '</td><td class="num">' + num(r.工厂总订单) + '</td><td class="num">' + num(r.已发货数量) + '</td><td class="num' + remainCls + '">' + num(r.工厂剩余数量) + '</td><td class="num">¥' + num(Math.round(r.剩余库存余额 || 0)) + '</td><td class="num">' + num(r.SKU行数) + '</td><td>' + pill(r.状态) + '</td><td><button class="btn-del-order" data-order="' + esc(r.订单号) + '" data-cat="' + esc(r.品类) + '" type="button" style="background:#fee;border:1px solid #c33;color:#c33;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px;">删除</button></td></tr>';
     }).join('');
     orderBody.querySelectorAll('.btn-del-order').forEach(function(btn) {
       btn.addEventListener('click', function() {

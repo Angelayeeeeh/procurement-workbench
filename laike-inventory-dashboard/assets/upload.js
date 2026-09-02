@@ -675,26 +675,29 @@
     data.rows.forEach(function(r) {
       r.工厂剩余数量 = r.工厂总订单 - r.已发货数量;
       r.发货进度 = r.工厂总订单 > 0 ? r.已发货数量 / r.工厂总订单 : 0;
+      r.剩余库存余额 = r.工厂剩余数量 * (r.单价 || 0);
       if (r.已发货数量 <= 0) r.状态 = '待发货';
       else if (r.已发货数量 > r.工厂总订单) r.状态 = '超发异常';
       else if (r.已发货数量 >= r.工厂总订单) r.状态 = '全部发完';
       else r.状态 = '部分发货';
     });
-    var total = { 订单SKU行: data.rows.length, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 未匹配出货行数: (data.unmatched || []).length };
+    var total = { 订单SKU行: data.rows.length, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 剩余库存余额: 0, 未匹配出货行数: (data.unmatched || []).length };
     data.rows.forEach(function(r) {
       total.工厂总订单 += r.工厂总订单;
       total.已发货数量 += r.已发货数量;
       total.工厂剩余数量 += r.工厂剩余数量;
+      total.剩余库存余额 += r.剩余库存余额;
     });
     data.summary = total;
     var catMap = {};
     var catSkuSet = {};
     data.rows.forEach(function(r) {
-      if (!catMap[r.品类]) catMap[r.品类] = { 品类: r.品类, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 订单SKU行: 0, SKU数: 0, 超发SKU行: 0 };
+      if (!catMap[r.品类]) catMap[r.品类] = { 品类: r.品类, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 剩余库存余额: 0, 订单SKU行: 0, SKU数: 0, 超发SKU行: 0 };
       var c = catMap[r.品类];
       c.工厂总订单 += r.工厂总订单;
       c.已发货数量 += r.已发货数量;
       c.工厂剩余数量 += r.工厂剩余数量;
+      c.剩余库存余额 += r.剩余库存余额;
       c.订单SKU行++;
       if (r.状态 === '超发异常') c.超发SKU行++;
       catSkuSet[r.品类 + '|' + r.SKU编码] = true;
@@ -707,11 +710,12 @@
     var orderMap = {};
     data.rows.forEach(function(r) {
       var key = r.品类 + '|' + r.订单号;
-      if (!orderMap[key]) orderMap[key] = { 品类: r.品类, 订单号: r.订单号, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, SKU行数: 0, 状态: '' };
+      if (!orderMap[key]) orderMap[key] = { 品类: r.品类, 订单号: r.订单号, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 剩余库存余额: 0, SKU行数: 0, 状态: '' };
       var o = orderMap[key];
       o.工厂总订单 += r.工厂总订单;
       o.已发货数量 += r.已发货数量;
       o.工厂剩余数量 += r.工厂剩余数量;
+      o.剩余库存余额 += r.剩余库存余额;
       o.SKU行数++;
     });
     Object.values(orderMap).forEach(function(o) {
@@ -723,11 +727,12 @@
     var skuMap = {};
     data.rows.forEach(function(r) {
       var key = r.品类 + '|' + r.SKU编码;
-      if (!skuMap[key]) skuMap[key] = { 品类: r.品类, SKU编码: r.SKU编码, 产品名称: r.产品名称, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 订单行数: 0 };
+      if (!skuMap[key]) skuMap[key] = { 品类: r.品类, SKU编码: r.SKU编码, 产品名称: r.产品名称, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 剩余库存余额: 0, 订单行数: 0 };
       var s = skuMap[key];
       s.工厂总订单 += r.工厂总订单;
       s.已发货数量 += r.已发货数量;
       s.工厂剩余数量 += r.工厂剩余数量;
+      s.剩余库存余额 += r.剩余库存余额;
       s.订单行数++;
     });
     data.skuSummary = Object.values(skuMap).sort(function(a, b) { return b.工厂总订单 - a.工厂总订单; });
