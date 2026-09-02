@@ -6,7 +6,9 @@
     orderPreviewRows: [],
     shipPreviewFileName: '',
     orderPreviewFileName: '',
-    pendingType: null
+    pendingType: null,
+    priceVerifyRows: [],
+    priceVerifyFileName: ''
   };
 
   function esc(v) {
@@ -157,8 +159,8 @@
     cols.model = findCol(headers, ['型号', 'SKU', 'SKU编码', 'GY号', 'GY', '匹配型号']);
     cols.product = findCol(headers, ['品名', '产品名称', '产品名称及型号', '货品名称', '货品', '产品']);
     cols.qty = findCol(headers, ['数量', '订货数量', '订单数量', '本次订单数量']);
-    cols.unitPrice = findCol(headers, ['单价', '含税运单价', '含税单价', '无税单价', '价格']);
-    cols.totalAmount = findCol(headers, ['总金额', '金额', '总价', '合计金额', '订单金额']);
+    cols.unitPrice = findCol(headers, ['单价', '含税运单价', '含税单价', '无税单价', '不含税单价', '价格', '标准单价', '含税单价(元)', '不含税单价(元)', '单价(元)', '含税单价（元）', '不含税单价（元）', '单价（元）', '含税运单价(元)']);
+    cols.totalAmount = findCol(headers, ['总金额', '金额', '总价', '合计金额', '订单金额', '含税总金额', '含税金额', '总金额(元)', '金额(元)', '价税合计', '价税合计金额']);
     cols.category = findCol(headers, ['品类', '类别']);
     cols.customer = findCol(headers, ['客户']);
     cols.entity = findCol(headers, ['抬头']);
@@ -675,6 +677,10 @@
     data.rows.forEach(function(r) {
       r.工厂剩余数量 = r.工厂总订单 - r.已发货数量;
       r.发货进度 = r.工厂总订单 > 0 ? r.已发货数量 / r.工厂总订单 : 0;
+      /* 如果单价为空但总金额和数量存在，反推单价 */
+      if ((!r.单价 || r.单价 === 0) && r.总金额 && r.工厂总订单) {
+        r.单价 = r.总金额 / r.工厂总订单;
+      }
       r.剩余库存余额 = r.工厂剩余数量 * (r.单价 || 0);
       if (r.已发货数量 <= 0) r.状态 = '待发货';
       else if (r.已发货数量 > r.工厂总订单) r.状态 = '超发异常';
@@ -969,6 +975,214 @@
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  /* ===== 单价核对补录功能 ===== */
+  function showPriceVerifyPreview(type, message) {
+    var el = document.getElementById('priceVerifyPreview');
+    if (!el) return;
+    el.style.display = 'block';
+    el.className = 'upload-preview ' + (type === 'error' ? 'preview-error' : type === 'success' ? 'preview-success' : '');
+    el.innerHTML = '<div class="preview-header">' + message + '</div>';
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  /* 专门识别单价核对模版：A=订单号 B=SKU型号 C=产品名称及型号 D=规格 E=单位 F=成本 */
+  function detectPriceVerifyCols(headers) {
+    var cols = {};
+    cols.orderNo = findCol(headers, ['订单号', '销售订单号', 'IBOC', '预订单']);
+    cols.sku = findCol(headers, ['SKU型号', 'SKU', 'SKU编码', 'GY号', 'GY', '型号', '匹配型号']);
+    cols.product = findCol(headers, ['产品名称及型号', '品名', '产品名称', '货品名称', '货品', '产品']);
+    cols.spec = findCol(headers, ['规格', '规格型号', '包装规格']);
+    cols.unit = findCol(headers, ['单位']);
+    cols.cost = findCol(headers, ['成本', '单价', '含税运单价', '含税单价', '无税单价', '不含税单价', '价格', '成本单价']);
+    /* 如果表头匹配不到，按列位置兜底：A=0 B=1 C=2 D=3 E=4 F=5 */
+    if (cols.orderNo === -1 && headers.length >= 1) cols.orderNo = 0;
+    if (cols.sku === -1 && headers.length >= 2) cols.sku = 1;
+    if (cols.product === -1 && headers.length >= 3) cols.product = 2;
+    if (cols.spec === -1 && headers.length >= 4) cols.spec = 3;
+    if (cols.unit === -1 && headers.length >= 5) cols.unit = 4;
+    if (cols.cost === -1 && headers.length >= 6) cols.cost = 5;
+    return cols;
+  }
+
+  function handlePriceVerifyFile(file) {
+    parseExcel(file, function(err, rows) {
+      if (err) { showPriceVerifyPreview('error', '<h3>文件解析失败</h3><p>' + esc(err.message) + '</p>'); return; }
+      if (rows.length < 2) { showPriceVerifyPreview('error', '<h3>无数据</h3><p>文件没有数据行</p>'); return; }
+      /* 第一行就是表头 */
+      var headers = (rows[0] || []).map(function(h) { return String(h || '').trim(); });
+      var cols = detectPriceVerifyCols(headers);
+      var missing = [];
+      if (cols.orderNo === -1) missing.push('订单号(A列)');
+      if (cols.sku === -1) missing.push('SKU型号(B列)');
+      if (cols.cost === -1) missing.push('成本(F列)');
+      if (missing.length) {
+        showPriceVerifyPreview('error', '<h3>缺少必要列</h3><p>缺少：' + missing.join('、') + '。检测到的表头：' + esc(headers.join('、')) + '</p>');
+        return;
+      }
+      var parsed = [];
+      for (var i = 1; i < rows.length; i++) {
+        var r = rows[i];
+        if (!r || r.length === 0) continue;
+        var orderNo = trimOrderNoSuffix(String(r[cols.orderNo] || '').trim());
+        var sku = String(r[cols.sku] || '').trim();
+        var cost = cols.cost >= 0 ? parseNumberLike(r[cols.cost]) : 0;
+        var product = cols.product >= 0 ? String(r[cols.product] || '').trim() : '';
+        var spec = cols.spec >= 0 ? String(r[cols.spec] || '').trim() : '';
+        var unit = cols.unit >= 0 ? String(r[cols.unit] || '').trim() : '';
+        if (!orderNo && !sku && !cost) continue;
+        if (!cost) continue;
+        parsed.push({
+          订单号: orderNo,
+          SKU编码: sku,
+          产品名称: product,
+          规格: spec,
+          单位: unit,
+          成本: cost
+        });
+      }
+      if (!parsed.length) {
+        showPriceVerifyPreview('error', '<h3>未识别到有效数据</h3><p>没有找到含成本的行</p>');
+        return;
+      }
+      /* 按 订单号 + SKU编码 精确匹配现有数据 */
+      var data = window.LAIKE_DASHBOARD_DATA;
+      state.priceVerifyRows = parsed.map(function(p) {
+        var matched = false;
+        var existingRow = null;
+        for (var j = 0; j < data.rows.length; j++) {
+          var rr = data.rows[j];
+          if (String(rr.订单号) === String(p.订单号) && String(rr.SKU编码) === String(p.SKU编码)) {
+            matched = true;
+            existingRow = rr;
+            break;
+          }
+        }
+        return {
+          订单号: p.订单号,
+          SKU编码: p.SKU编码,
+          产品名称: p.产品名称 || (existingRow ? existingRow.产品名称 : ''),
+          规格: p.规格,
+          单位: p.单位,
+          品类: existingRow ? existingRow.品类 : '',
+          原单价: existingRow ? Number(existingRow.单价 || 0) : 0,
+          新成本: p.成本,
+          工厂剩余数量: existingRow ? Number(existingRow.工厂剩余数量 || 0) : 0,
+          matched: matched
+        };
+      });
+      state.priceVerifyFileName = file.name;
+      renderPriceVerifyPreview();
+    });
+  }
+
+  function renderPriceVerifyPreview() {
+    var rows = state.priceVerifyRows || [];
+    var matchedCount = rows.filter(function(r) { return r.matched; }).length;
+    var unmatchedCount = rows.length - matchedCount;
+    var willUpdateCount = rows.filter(function(r) { return r.matched && r.新成本 > 0; }).length;
+    var html = '<div class="preview-header">' +
+      '<h3>单价核对结果</h3>' +
+      '<p>文件：<strong>' + esc(state.priceVerifyFileName || '') + '</strong>；共识别 <strong>' + rows.length + '</strong> 行，匹配 <strong>' + matchedCount + '</strong> 行，未匹配 <strong>' + unmatchedCount + '</strong> 行。确认后将<strong style="color:var(--accent)">只更新单价（成本）</strong>，不修改任何库存数量。</p>' +
+      '</div>';
+    if (rows.length) {
+      html += '<div class="table-wrap" style="max-height:400px"><table><thead><tr>' +
+        '<th>品类</th><th>订单号</th><th>SKU型号</th><th>产品名称</th><th>规格</th><th>单位</th><th>工厂剩余</th><th>原单价</th><th>成本(新单价)</th><th>更新后余额</th><th>状态</th>' +
+        '</tr></thead><tbody>';
+      rows.forEach(function(r, i) {
+        var changed = r.matched && r.新成本 > 0 && r.新成本 !== r.原单价;
+        var newBalance = r.matched ? r.工厂剩余数量 * r.新成本 : 0;
+        html += '<tr>' +
+          '<td>' + esc(r.品类) + '</td>' +
+          '<td><input class="preview-input mono" data-pv-field="订单号" data-pv-index="' + i + '" value="' + esc(r.订单号) + '"></td>' +
+          '<td><input class="preview-input mono" data-pv-field="SKU编码" data-pv-index="' + i + '" value="' + esc(r.SKU编码) + '"></td>' +
+          '<td>' + esc(r.产品名称) + '</td>' +
+          '<td>' + esc(r.规格) + '</td>' +
+          '<td>' + esc(r.单位) + '</td>' +
+          '<td class="num">' + num(r.工厂剩余数量) + '</td>' +
+          '<td class="num">' + num(r.原单价) + '</td>' +
+          '<td><input class="preview-input num" type="number" min="0" step="0.01" data-pv-field="新成本" data-pv-index="' + i + '" value="' + esc(r.新成本) + '"></td>' +
+          '<td class="num" style="color:var(--accent);font-weight:700">¥' + num(Math.round(newBalance)) + '</td>' +
+          '<td>' + (r.matched ? (changed ? '<span class="pill warn">将更新</span>' : '<span class="pill ok">已一致</span>') : '<span class="pill bad">未匹配</span>') + '</td>' +
+        '</tr>';
+      });
+      html += '</tbody></table></div>';
+      if (willUpdateCount > 0) {
+        var totalNewBalance = rows.filter(function(r) { return r.matched && r.新成本 > 0; }).reduce(function(s, r) { return s + r.工厂剩余数量 * r.新成本; }, 0);
+        html += '<div style="margin-top:12px;text-align:center">' +
+          '<p style="margin-bottom:8px">本次匹配行更新后预计余额合计：<strong style="color:var(--accent);font-size:16px">¥' + num(Math.round(totalNewBalance)) + '</strong></p>' +
+          '<button type="button" class="btn-primary" id="confirmPriceVerifyBtn">确认更新单价（仅更新 ' + willUpdateCount + ' 行的单价，不修改数量）</button>' +
+          ' <button type="button" class="btn-secondary" id="cancelPriceVerifyBtn">取消</button>' +
+          '</div>';
+      }
+    } else {
+      html += '<p>没有识别到有效数据。</p>';
+    }
+    var el = document.getElementById('priceVerifyPreview');
+    if (el) {
+      el.style.display = 'block';
+      el.className = 'upload-preview';
+      el.innerHTML = html;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    var confirmBtn = document.getElementById('confirmPriceVerifyBtn');
+    if (confirmBtn) confirmBtn.addEventListener('click', submitPriceVerify);
+    var cancelBtn = document.getElementById('cancelPriceVerifyBtn');
+    if (cancelBtn) cancelBtn.addEventListener('click', function() {
+      var el = document.getElementById('priceVerifyPreview');
+      if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+      state.priceVerifyRows = [];
+    });
+    document.querySelectorAll('[data-pv-field]').forEach(function(input) {
+      input.addEventListener('change', function() {
+        var idx = parseInt(this.getAttribute('data-pv-index'), 10);
+        var field = this.getAttribute('data-pv-field');
+        if (state.priceVerifyRows[idx]) {
+          if (field === '新成本') {
+            state.priceVerifyRows[idx][field] = parseNumberLike(this.value);
+          } else {
+            state.priceVerifyRows[idx][field] = this.value;
+          }
+          renderPriceVerifyPreview();
+        }
+      });
+    });
+  }
+
+  function submitPriceVerify() {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !data.rows) return;
+    var rows = state.priceVerifyRows || [];
+    var updatedCount = 0;
+    try {
+      var old = localStorage.getItem('laike_inventory_dashboard_saved_data_v1');
+      if (old) localStorage.setItem('laike_inventory_dashboard_backup_v1', old);
+    } catch (e) {}
+    rows.forEach(function(pv) {
+      if (!pv.matched || !pv.新成本) return;
+      for (var i = 0; i < data.rows.length; i++) {
+        var r = data.rows[i];
+        if (String(r.订单号) === String(pv.订单号) && String(r.SKU编码) === String(pv.SKU编码)) {
+          r.单价 = pv.新成本;
+          updatedCount++;
+          break;
+        }
+      }
+    });
+    rebuildSummaries(data);
+    var saved = window.LAIKE_STORAGE && window.LAIKE_STORAGE.save && window.LAIKE_STORAGE.save(false);
+    window.LAIKE_APP.refresh();
+    var el = document.getElementById('priceVerifyPreview');
+    if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+    state.priceVerifyRows = [];
+    var totalBalance = data.summary.剩余库存余额 || 0;
+    showPreview('success', '<div class="preview-header"><h3>单价核对完成</h3><p>已更新 <strong>' + updatedCount + '</strong> 个SKU行的单价（成本）数据。库存数量未做任何修改。当前剩余库存余额：<strong>¥' + num(Math.round(totalBalance)) + '</strong>。' + (saved ? '已暂存，请点击下方"一键保存"同步云端。' : '') + '</p></div>');
+    setSaveStatus('单价已更新，待一键保存云端', 'bad');
+    setTimeout(function() {
+      var el = document.getElementById('uploadPreview');
+      if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+    }, 8000);
+  }
+
   function init() {
     var shipInput = document.getElementById('shipFileInput');
     var orderInput = document.getElementById('orderFileInput');
@@ -1005,6 +1219,16 @@
       });
     }
     if (oneClickSaveBtn) oneClickSaveBtn.addEventListener('click', oneClickSave);
+    var pvInput = document.getElementById('priceVerifyInput');
+    var pvDrop = document.getElementById('priceVerifyZone');
+    if (pvInput) {
+      pvInput.addEventListener('change', function(e) {
+        if (e.target.files.length) handlePriceVerifyFile(e.target.files[0]);
+      });
+    }
+    if (pvDrop) {
+      setupDragDrop(pvDrop, pvInput, function(file) { handlePriceVerifyFile(file); });
+    }
     var undoBtn = document.getElementById('undoBtn');
     if (undoBtn) undoBtn.addEventListener('click', function() {
       if (!window.LAIKE_STORAGE || !window.LAIKE_STORAGE.hasBackup || !window.LAIKE_STORAGE.hasBackup()) {
@@ -1051,7 +1275,7 @@
     setSaveStatus('已删除订单 ' + orderNo + '，数据已更新', 'ok');
   }
 
-  window.LAIKE_UPLOAD = { deleteOrder: deleteOrder };
+  window.LAIKE_UPLOAD = { deleteOrder: deleteOrder, rebuildSummaries: rebuildSummaries };
 
   function setupDragDrop(zone, input, handler) {
     zone.addEventListener('click', function() { input.click(); });
@@ -1070,9 +1294,20 @@
     });
   }
 
+  /* 页面加载后自动重建汇总数据，确保余额等新增字段已计算 */
+  function autoRebuildOnLoad() {
+    if (window.LAIKE_DASHBOARD_DATA && window.LAIKE_DASHBOARD_DATA.rows && window.LAIKE_DASHBOARD_DATA.rows.length) {
+      rebuildSummaries(window.LAIKE_DASHBOARD_DATA);
+      if (window.LAIKE_APP && window.LAIKE_APP.refresh) {
+        window.LAIKE_APP.refresh();
+      }
+    }
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', function() { autoRebuildOnLoad(); init(); });
   } else {
+    autoRebuildOnLoad();
     init();
   }
 })();

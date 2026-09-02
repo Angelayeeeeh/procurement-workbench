@@ -339,6 +339,14 @@
           <div id="orderUploadPreview" class="upload-preview" style="display:none;"></div>
         </div>
       </div>
+      <div class="upload-zone" id="priceVerifyZone" style="border-color: var(--accent); background: #f0fdfa;">
+        <div class="upload-icon">💰</div>
+        <h3>单价核对补录</h3>
+        <p>上传含单价的订单 Excel，系统自动匹配现有数据并<strong>只更新单价和金额</strong>，不修改任何库存数量。匹配后预览确认再提交。</p>
+        <input type="file" id="priceVerifyInput" accept=".xlsx,.xls">
+        <div style="color: var(--accent); font-size: 13px; font-weight: 700;">点击选择或拖拽含单价的 Excel 到此处</div>
+        <div id="priceVerifyPreview" class="upload-preview" style="display:none;"></div>
+      </div>
       <div class="manual-entry-card">
         <h3><span class="manual-icon">✏️</span>手动录入新订单</h3>
         <p class="desc">无需 Excel 文件，直接手动填写订单信息。同一 SKU（品类 + 订单号 + SKU编码）会自动追加到已有库存；填写后点击「确认提交」才会更新库存数据。</p>
@@ -450,12 +458,12 @@
   <script src="./_shared/js/xlsx.full.min.js"></script>
   <script>if(!window.XLSX){document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');}</script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="assets/dashboard-data.js?v=20260902"></script>
-  <script src="assets/supabase-config.js?v=20260902"></script>
-  <script src="assets/charts.js?v=20260902"></script><div style="position: absolute !important; visibility: hidden !important; padding: 0px !important; margin: 0px !important; border-width: 0px !important; user-select: none !important; width: 0px !important; height: 0px !important; inset: 0px auto auto 0px !important;"></div><div style="position: absolute !important; visibility: hidden !important; padding: 0px !important; margin: 0px !important; border-width: 0px !important; user-select: none !important; width: 0px !important; height: 0px !important; inset: 0px 0px auto auto !important;"></div><div style="position: absolute !important; visibility: hidden !important; padding: 0px !important; margin: 0px !important; border-width: 0px !important; user-select: none !important; width: 0px !important; height: 0px !important; inset: auto auto 0px 0px !important;"></div><div style="position: absolute !important; visibility: hidden !important; padding: 0px !important; margin: 0px !important; border-width: 0px !important; user-select: none !important; width: 0px !important; height: 0px !important; inset: auto 0px 0px auto !important;"></div><div class=""></div><div class=""></div>
-  <script src="assets/app.js?v=20260902"></script>
-  <script src="assets/cloud-sync.js?v=20260902"></script>
-  <script src="assets/upload.js?v=20260902"></script>
+  <script src="assets/dashboard-data.js?v=20260904"></script>
+  <script src="assets/supabase-config.js?v=20260904"></script>
+  <script src="assets/charts.js?v=20260904"></script>
+  <script src="assets/app.js?v=20260904"></script>
+  <script src="assets/cloud-sync.js?v=20260904"></script>
+  <script src="assets/upload.js?v=20260904"></script>
 
 
 </body></html>

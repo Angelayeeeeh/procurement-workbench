@@ -100,6 +100,10 @@
           return false;
         }
         window.LAIKE_DASHBOARD_DATA = res.data.data;
+        /* 重建汇总数据，确保新增字段（如余额）已计算 */
+        if (window.LAIKE_UPLOAD && window.LAIKE_UPLOAD.rebuildSummaries) {
+          window.LAIKE_UPLOAD.rebuildSummaries(window.LAIKE_DASHBOARD_DATA);
+        }
         if (window.LAIKE_STORAGE && window.LAIKE_STORAGE.save) {
           try {
             localStorage.setItem('laike_inventory_dashboard_saved_data_v1', JSON.stringify(window.LAIKE_DASHBOARD_DATA));
