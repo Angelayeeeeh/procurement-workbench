@@ -254,6 +254,17 @@
       box-shadow: 0 2px 8px rgba(42, 157, 143, .20);
     }
     .btn-primary:hover { transform: translateY(-1px); background: var(--accent-dark); box-shadow: 0 4px 12px rgba(42, 157, 143, .30); }
+    .btn-secondary {
+      background: #fff;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .btn-secondary:hover { background: #f0fdfa; }
     .update-bar .hint { font-size: 13px; color: var(--muted); }
     .manual-entry-card {
       margin-top: 14px;
@@ -342,6 +353,7 @@
         </div>
         <div class="update-bar" style="margin-top:0;">
           <button class="btn-primary" id="oneClickSaveBtn" type="button">一键保存</button>
+          <button class="btn-secondary" id="undoBtn" type="button" style="margin-left:8px;">恢复上一步</button>
           <span class="save-status" id="oneClickSaveStatus">等待上传或保存</span>
         </div>
       </div>

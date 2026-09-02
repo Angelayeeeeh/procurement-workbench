@@ -1,5 +1,6 @@
 (function() {
   var STORAGE_KEY = 'laike_inventory_dashboard_saved_data_v1';
+  var BACKUP_KEY = 'laike_inventory_dashboard_backup_v1';
   function nowText() {
     return new Date().toISOString().slice(0, 16).replace('T', ' ');
   }
@@ -20,6 +21,11 @@
     try {
       var data = window.LAIKE_DASHBOARD_DATA;
       if (!data || !data.rows) return false;
+      /* 备份当前数据（保存上一步） */
+      try {
+        var old = localStorage.getItem(STORAGE_KEY);
+        if (old) localStorage.setItem(BACKUP_KEY, old);
+      } catch (e) {}
       if (!data.meta) data.meta = {};
       data.meta.savedAt = nowText();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -35,8 +41,23 @@
   function clearSavedData() {
     localStorage.removeItem(STORAGE_KEY);
   }
+  function hasBackup() {
+    return !!localStorage.getItem(BACKUP_KEY);
+  }
+  function undoLastSave() {
+    try {
+      var backup = localStorage.getItem(BACKUP_KEY);
+      if (!backup) return false;
+      localStorage.setItem(STORAGE_KEY, backup);
+      localStorage.removeItem(BACKUP_KEY);
+      return true;
+    } catch (err) {
+      console.warn('恢复上一步失败', err);
+      return false;
+    }
+  }
   loadSavedData();
-  window.LAIKE_STORAGE = { save: saveCurrentData, clear: clearSavedData, load: loadSavedData };
+  window.LAIKE_STORAGE = { save: saveCurrentData, clear: clearSavedData, load: loadSavedData, hasBackup: hasBackup, undo: undoLastSave };
 
   var searchInput = document.getElementById('searchInput');
   var statusFilter = document.getElementById('statusFilter');

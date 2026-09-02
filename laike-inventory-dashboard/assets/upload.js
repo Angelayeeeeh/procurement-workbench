@@ -1000,6 +1000,21 @@
       });
     }
     if (oneClickSaveBtn) oneClickSaveBtn.addEventListener('click', oneClickSave);
+    var undoBtn = document.getElementById('undoBtn');
+    if (undoBtn) undoBtn.addEventListener('click', function() {
+      if (!window.LAIKE_STORAGE || !window.LAIKE_STORAGE.hasBackup || !window.LAIKE_STORAGE.hasBackup()) {
+        setSaveStatus('没有可恢复的上一步数据', 'bad');
+        return;
+      }
+      if (!confirm('确定恢复到上一步数据？当前未保存的更改将丢失。')) return;
+      var ok = window.LAIKE_STORAGE.undo();
+      if (ok) {
+        setSaveStatus('已恢复到上一步，正在刷新页面...', 'ok');
+        setTimeout(function() { location.reload(); }, 600);
+      } else {
+        setSaveStatus('恢复失败，请重试', 'bad');
+      }
+    });
     renderManualEntry();
   }
 
