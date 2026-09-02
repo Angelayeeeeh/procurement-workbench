@@ -268,8 +268,17 @@
 
     orderBody.innerHTML = data.orderSummary.map(function(r) {
       var remainCls = r.工厂剩余数量 <= 0 ? ' neg' : '';
-      return '<tr><td>' + esc(r.品类) + '</td><td class="mono">' + esc(r.订单号) + '</td><td class="num">' + num(r.工厂总订单) + '</td><td class="num">' + num(r.已发货数量) + '</td><td class="num' + remainCls + '">' + num(r.工厂剩余数量) + '</td><td class="num">' + num(r.SKU行数) + '</td><td>' + pill(r.状态) + '</td></tr>';
+      return '<tr><td>' + esc(r.品类) + '</td><td class="mono">' + esc(r.订单号) + '</td><td class="num">' + num(r.工厂总订单) + '</td><td class="num">' + num(r.已发货数量) + '</td><td class="num' + remainCls + '">' + num(r.工厂剩余数量) + '</td><td class="num">' + num(r.SKU行数) + '</td><td>' + pill(r.状态) + '</td><td><button class="btn-del-order" data-order="' + esc(r.订单号) + '" data-cat="' + esc(r.品类) + '" type="button" style="background:#fee;border:1px solid #c33;color:#c33;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px;">删除</button></td></tr>';
     }).join('');
+    orderBody.querySelectorAll('.btn-del-order').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var orderNo = btn.getAttribute('data-order');
+        var cat = btn.getAttribute('data-cat');
+        if (window.LAIKE_UPLOAD && window.LAIKE_UPLOAD.deleteOrder) {
+          window.LAIKE_UPLOAD.deleteOrder(orderNo, cat);
+        }
+      });
+    });
 
     skuBody.innerHTML = data.skuSummary.map(function(r) {
       var remainCls = r.工厂剩余数量 <= 0 ? ' neg' : '';

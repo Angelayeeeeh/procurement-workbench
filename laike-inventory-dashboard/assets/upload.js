@@ -1018,6 +1018,36 @@
     renderManualEntry();
   }
 
+  function deleteOrder(orderNo, category) {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !data.rows) return;
+    var matchRows = data.rows.filter(function(r) { return r.订单号 === orderNo && r.品类 === category; });
+    if (!matchRows.length) {
+      alert('未找到订单：' + category + ' / ' + orderNo);
+      return;
+    }
+    if (!confirm('确定删除整张订单？\n品类：' + category + '\n订单号：' + orderNo + '\n包含 ' + matchRows.length + ' 个SKU行\n该订单的所有库存数据将一并删除。')) return;
+    /* 备份当前数据 */
+    try {
+      var old = localStorage.getItem('laike_inventory_dashboard_saved_data_v1');
+      if (old) localStorage.setItem('laike_inventory_dashboard_backup_v1', old);
+    } catch (e) {}
+    /* 删除该订单的所有行 */
+    data.rows = data.rows.filter(function(r) { return !(r.订单号 === orderNo && r.品类 === category); });
+    /* 重新计算汇总 */
+    rebuildSummaries(data);
+    /* 保存并刷新 */
+    if (window.LAIKE_STORAGE && window.LAIKE_STORAGE.save) {
+      window.LAIKE_STORAGE.save(false);
+    }
+    if (window.LAIKE_APP && window.LAIKE_APP.refresh) {
+      window.LAIKE_APP.refresh();
+    }
+    setSaveStatus('已删除订单 ' + orderNo + '，数据已更新', 'ok');
+  }
+
+  window.LAIKE_UPLOAD = { deleteOrder: deleteOrder };
+
   function setupDragDrop(zone, input, handler) {
     zone.addEventListener('click', function() { input.click(); });
     zone.querySelectorAll('.upload-preview').forEach(function(preview) {
