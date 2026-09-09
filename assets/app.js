@@ -832,6 +832,13 @@
       subject: '采购订单{{订单号}} 双方盖章版合同回传',
       body: '您好！\n我司已于{{收到回签日期}}，收到贵公司签署并盖章的采购订单回签文件。现随邮件附件，将经我司盖章确认的完整采购订单合同（双方盖章版PDF）回传给您，敬请查收并妥善保管，作为后续合作及结算正式依据。\n\n请贵司收到附件后，确认文件清晰完整，如有任何问题请及时与我们联系。\n\n感谢贵司对本次采购工作的积极配合与支持，期待未来继续与贵司保持高效、愉快的合作。\n顺祝商祺，生意兴隆！',
       wechat: ''
+    },
+    antifakePurchase: {
+      name: '防伪标采购确认邮件 + 防伪标库存核算',
+      subject: '【采购订单确认】采购订单{{订单号}} 确认回签及防伪标寄出通知',
+      body: '您好！\n\n附件为我司本次采购订单（订单编号：{{订单号}}），同时特此告知该订单对应防伪标物料寄出相关事宜，烦请贵司统一查收并配合落实相关工作。\n\n一、订单确认相关要求\n1. 盖章回签：请贵司核对订单内容无误后，对订单盖章确认，并将盖章扫描件回传至本邮箱，便于双方归档留存。\n2. 交期确认：请贵司根据订单条款，回复确认最终交付日期。若因特殊情况无法按期交付，请提前与我司沟通说明，协商解决方案。\n\n我司收到贵司盖章回签的订单后，将第一时间完成盖章并回传贵司，完成双方订单备案。请贵司于{{回复截止日期}}前完成订单确认回复，感谢配合！\n\n二、防伪标物料寄出通知\n针对订单：{{订单号}}伪标物料，本次寄出防伪标共计{{本次寄出数量}}个，请贵司收到物料后妥善保管，并依据该批防伪标安排后续生产工作。\n\n三、防伪标库存核算明细\n1. 贵司工厂原有留存防伪标：{{原有留存防伪标}}个\n2. 叠加本次寄出防伪标：{{本次寄出数量}}个，扣除本订单（订单编号{{订单号}}）{{本订单扣除数量}}个\n3. 贵司工厂最终账面防伪标结余：{{最终结余}}个\n\n四、生产及物料报备须知\n贵司在生产过程中若产生防伪标损耗、报废情况，请及时向我司报备登记；所有报废防伪标请单独妥善留存，后续我司将定期统一汇总回收。\n\n物流及物料信息：\n寄出单号：{{寄出单号}}\n防伪标号段：{{防伪标号段}}\n\n若您核对订单信息、物料库存或物流情况时有任何疑问，可随时与我司联系。\n期待与贵司顺利合作、稳步推进项目，顺祝商祺！',
+      wechat: '',
+      isAntifake: true
     }
   };
 
@@ -961,6 +968,70 @@
     return lines.join('\n');
   }
 
+  function getAntifakeStockByFactory(factoryName) {
+    if (!factoryName) return 0;
+    var stock = state.antifakeStock || {};
+    var keys = Object.keys(stock);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i] === factoryName || keys[i].indexOf(factoryName) >= 0 || factoryName.indexOf(keys[i]) >= 0) {
+        return Number(stock[keys[i]]) || 0;
+      }
+    }
+    return 0;
+  }
+
+  function calcAntifakeFinalBalance() {
+    var original = parseInt($('antifakeOriginalStock') ? $('antifakeOriginalStock').value : 0) || 0;
+    var shipped = parseInt($('antifakeShippedQty') ? $('antifakeShippedQty').value : 0) || 0;
+    var deducted = parseInt($('antifakeDeductedQty') ? $('antifakeDeductedQty').value : 0) || 0;
+    return original + shipped - deducted;
+  }
+
+  function updateAntifakeBalance() {
+    var final = calcAntifakeFinalBalance();
+    var el = $('antifakeFinalBalance');
+    if (el) el.textContent = final + '个';
+    if ($('emailTemplate') && getAllEmailTemplates()[$('emailTemplate').value] && getAllEmailTemplates()[$('emailTemplate').value].isAntifake) {
+      renderSmartEmail();
+    }
+  }
+
+  function autoFillAntifakeOriginalStock() {
+    var factory = $('emailFactory') ? $('emailFactory').value.trim() : '';
+    var stock = getAntifakeStockByFactory(factory);
+    var el = $('antifakeOriginalStock');
+    if (el) {
+      el.value = stock;
+      el.setAttribute('placeholder', stock > 0 ? stock + '（自动从防伪标库存读取）' : '未找到该工厂的防伪标库存，请手动填写');
+    }
+    updateAntifakeBalance();
+  }
+
+  function autoSetReplyDeadline() {
+    var el = $('emailReplyDeadline');
+    if (!el || el.value) return;
+    var d = new Date();
+    d.setDate(d.getDate() + 2);
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    el.value = y + '-' + m + '-' + day;
+  }
+
+  function isAntifakeTemplateSelected() {
+    if (!$('emailTemplate')) return false;
+    var t = getAllEmailTemplates()[$('emailTemplate').value];
+    return !!(t && t.isAntifake);
+  }
+
+  function toggleAntifakeFields() {
+    var block = $('antifakeFieldsBlock');
+    if (!block) return;
+    var show = isAntifakeTemplateSelected();
+    block.style.display = show ? 'block' : 'none';
+    if (show) autoFillAntifakeOriginalStock();
+  }
+
   function renderSmartEmail() {
     if (!$('emailTemplate')) return;
     var template = getAllEmailTemplates()[$('emailTemplate').value] || emailDefaultTemplates.pendingSign;
@@ -970,6 +1041,14 @@
       '回复截止日期': formatEmailDate($('emailReplyDeadline').value) || '【请填写回复截止日期】',
       '收到回签日期': formatEmailDate($('emailSignedDate').value) || '【请填写收到回签日期】'
     };
+    if (template.isAntifake) {
+      values['原有留存防伪标'] = $('antifakeOriginalStock') ? (parseInt($('antifakeOriginalStock').value) || 0) : 0;
+      values['本次寄出数量'] = $('antifakeShippedQty') ? (parseInt($('antifakeShippedQty').value) || 0) : 0;
+      values['本订单扣除数量'] = $('antifakeDeductedQty') ? (parseInt($('antifakeDeductedQty').value) || 0) : 0;
+      values['最终结余'] = calcAntifakeFinalBalance();
+      values['寄出单号'] = $('antifakeShipTrackingNo') ? ($('antifakeShipTrackingNo').value.trim() || '__________') : '__________';
+      values['防伪标号段'] = $('antifakeCodeRange') ? ($('antifakeCodeRange').value.trim() || '__________') : '__________';
+    }
     var subject = fillEmailTemplate(template.subject, values);
     var body = fillEmailTemplate(template.body, values);
     body = addSupplierNameBeforeGreeting(body, $('emailFactory').value.trim());
@@ -1131,11 +1210,16 @@
     setupPurchaseOrderDropzone();
     if ($('purchaseOrderFile')) $('purchaseOrderFile').addEventListener('change', onPurchaseOrderFileChange);
     if ($('emailOrderNo')) $('emailOrderNo').addEventListener('input', syncEmailFactoryByOrder);
-    if ($('emailFactory')) $('emailFactory').addEventListener('input', renderSmartEmail);
-    if ($('emailTemplate')) $('emailTemplate').addEventListener('change', renderSmartEmail);
+    if ($('emailFactory')) $('emailFactory').addEventListener('input', function() { renderSmartEmail(); if (isAntifakeTemplateSelected()) autoFillAntifakeOriginalStock(); });
+    if ($('emailTemplate')) $('emailTemplate').addEventListener('change', function() { toggleAntifakeFields(); renderSmartEmail(); });
     if ($('emailReplyDeadline')) $('emailReplyDeadline').addEventListener('input', renderSmartEmail);
     if ($('emailSignedDate')) $('emailSignedDate').addEventListener('input', renderSmartEmail);
     if ($('emailExtraNote')) $('emailExtraNote').addEventListener('input', renderSmartEmail);
+    if ($('antifakeOriginalStock')) $('antifakeOriginalStock').addEventListener('input', updateAntifakeBalance);
+    if ($('antifakeShippedQty')) $('antifakeShippedQty').addEventListener('input', updateAntifakeBalance);
+    if ($('antifakeDeductedQty')) $('antifakeDeductedQty').addEventListener('input', updateAntifakeBalance);
+    if ($('antifakeShipTrackingNo')) $('antifakeShipTrackingNo').addEventListener('input', renderSmartEmail);
+    if ($('antifakeCodeRange')) $('antifakeCodeRange').addEventListener('input', renderSmartEmail);
     if ($('renderEmailBtn')) $('renderEmailBtn').addEventListener('click', renderSmartEmail);
     if ($('saveOrderFactoryBtn')) $('saveOrderFactoryBtn').addEventListener('click', saveOrderFactoryMatch);
     if ($('clearOrderFactoryBtn')) $('clearOrderFactoryBtn').addEventListener('click', clearOrderFactoryMatch);
@@ -1147,6 +1231,7 @@
     if ($('copyEmailWechatBtn')) $('copyEmailWechatBtn').addEventListener('click', function () { copyTextFromElement('emailWechatOutput', '微信群文案已复制'); });
     if ($('emailReplyDeadline')) $('emailReplyDeadline').value = toYMD(addDays(today(), 2));
     if ($('emailSignedDate')) $('emailSignedDate').value = toYMD(today());
+    toggleAntifakeFields();
     renderSmartEmail();
   }
 

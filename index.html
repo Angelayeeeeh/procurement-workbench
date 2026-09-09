@@ -2879,6 +2879,22 @@
                 <div class="field"><label for="emailReplyDeadline">回复截止日期</label><input id="emailReplyDeadline" type="date"></div>
                 <div class="field"><label for="emailSignedDate">收到回签日期</label><input id="emailSignedDate" type="date"></div>
                 <div class="field wide"><label for="emailExtraNote">备注 / 追加文字</label><textarea id="emailExtraNote" placeholder="可选：这里填写的内容会追加到邮件正文末尾。"></textarea></div>
+                <div class="field wide" id="antifakeFieldsBlock" style="display:none;border:1.5px solid var(--accent);border-radius:var(--radius);padding:14px;background:#f0fdfa;margin-top:8px;">
+                  <strong style="display:block;margin-bottom:10px;color:var(--accent-dark);font-size:14px;">防伪标库存核算（自动填充原有留存，手动填写寄出/扣除数量）</strong>
+                  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+                    <div class="field"><label for="antifakeOriginalStock">原有留存防伪标</label><input id="antifakeOriginalStock" type="number" min="0" placeholder="选择供应商后自动填充"></div>
+                    <div class="field"><label for="antifakeShippedQty">本次寄出防伪标</label><input id="antifakeShippedQty" type="number" min="0" placeholder="手动填写"></div>
+                    <div class="field"><label for="antifakeDeductedQty">本订单扣除数量</label><input id="antifakeDeductedQty" type="number" min="0" placeholder="手动填写"></div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+                    <div class="field"><label for="antifakeShipTrackingNo">寄出单号</label><input id="antifakeShipTrackingNo" placeholder="物流单号"></div>
+                    <div class="field"><label for="antifakeCodeRange">防伪标号段</label><input id="antifakeCodeRange" placeholder="如：A11398001-A11398500"></div>
+                  </div>
+                  <div style="margin-top:10px;padding:8px 12px;border:1px solid var(--accent);border-radius:8px;background:#fff;text-align:center;">
+                    <span style="color:var(--muted);font-size:12px;">工厂最终账面防伪标结余：</span>
+                    <strong id="antifakeFinalBalance" style="color:var(--accent-dark);font-size:18px;">0个</strong>
+                  </div>
+                </div>
                 <div class="field wide"><button class="btn primary" id="renderEmailBtn" type="button">一键渲染邮件主题和正文</button></div>
               </div>
             </div>
@@ -3080,7 +3096,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="assets/procurement-supabase-config.js"></script>
-  <script src="assets/app.js?v=20260806"></script>
+  <script src="assets/app.js?v=20260909"></script>
   <script src="assets/procurement-cloud-sync.js?v=20260806"></script>
   <script src="assets/decoration-module.js"></script>
 
