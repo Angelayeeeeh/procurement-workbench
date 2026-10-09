@@ -317,6 +317,13 @@
         <button data-status="全部发完">全部发完</button>
         <button data-status="超发异常">超发异常</button>
       </div>
+      <div class="export-bar" style="margin-top:18px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:16px 20px;border-radius:var(--radius);background:linear-gradient(135deg,var(--accent-soft),#fff);border:2px solid var(--accent);">
+        <div style="flex:1;min-width:200px;">
+          <strong style="font-size:16px;color:var(--ink);">📥 导出最近出货记录</strong>
+          <div style="color:var(--muted);font-size:13px;margin-top:4px;">将已保存的出货匹配记录导出为 Excel，B列自动填充匹配到的订单号，保留原出货表格式。</div>
+        </div>
+        <button id="exportShipFlowBtn" type="button" style="background:var(--accent-dark);color:#fff;border:none;padding:12px 28px;border-radius:999px;cursor:pointer;font-size:15px;font-weight:700;box-shadow:0 4px 12px rgba(35,139,126,0.3);">📥 导出最近出货记录到Excel</button>
+      </div>
     </section>
 
     <section class="upload-section">
@@ -432,8 +439,7 @@
 
     <h2>出货流水记录</h2>
     <section class="card">
-      <p>最近一次出货扣减的匹配记录。可导出为Excel，B列自动填充匹配到的订单号。</p>
-      <button id="exportShipFlowBtn" type="button" style="background:var(--accent-dark);color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:14px;margin-top:8px;">导出最近出货记录到Excel</button>
+      <p>最近一次出货扣减的匹配记录。导出按钮已移至页面顶部 <strong>「导出最近出货记录」</strong> 显眼位置，B列自动填充匹配到的订单号。</p>
     </section>
 
     <h2>未匹配出货</h2>
@@ -467,9 +473,9 @@
   <script src="assets/dashboard-data.js?v=20260905"></script>
   <script src="assets/supabase-config.js?v=20260905"></script>
   <script src="assets/charts.js?v=20260905"></script>
-  <script src="assets/app.js?v=20260916b"></script>
+  <script src="assets/app.js?v=20260917a"></script>
   <script src="assets/cloud-sync.js?v=20260905"></script>
-  <script src="assets/upload.js?v=20260916c"></script>
+  <script src="assets/upload.js?v=20260917a"></script>
 
 
 </body></html>
