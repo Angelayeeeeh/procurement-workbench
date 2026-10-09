@@ -319,10 +319,10 @@
       </div>
       <div class="export-bar" style="margin-top:18px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:16px 20px;border-radius:var(--radius);background:linear-gradient(135deg,var(--accent-soft),#fff);border:2px solid var(--accent);">
         <div style="flex:1;min-width:200px;">
-          <strong style="font-size:16px;color:var(--ink);">📥 导出最近出货记录</strong>
-          <div style="color:var(--muted);font-size:13px;margin-top:4px;">将已保存的出货匹配记录导出为 Excel，B列自动填充匹配到的订单号，保留原出货表格式。</div>
+          <strong style="font-size:16px;color:var(--ink);">📥 导出最近一次出库匹配</strong>
+          <div style="color:var(--muted);font-size:13px;margin-top:4px;">导出最近一次上传的出库单：保留原表格式，B列填匹配订单号，H列填GY号；库存不足跨单时自动插入行并高亮；同时附每个SKU剩余数量表。</div>
         </div>
-        <button id="exportShipFlowBtn" type="button" style="background:var(--accent-dark);color:#fff;border:none;padding:12px 28px;border-radius:999px;cursor:pointer;font-size:15px;font-weight:700;box-shadow:0 4px 12px rgba(35,139,126,0.3);">📥 导出最近出货记录到Excel</button>
+        <button id="exportShipFlowBtn" type="button" style="background:var(--accent-dark);color:#fff;border:none;padding:12px 28px;border-radius:999px;cursor:pointer;font-size:15px;font-weight:700;box-shadow:0 4px 12px rgba(35,139,126,0.3);">📥 导出最近出库匹配到Excel</button>
       </div>
     </section>
 
@@ -439,7 +439,7 @@
 
     <h2>出货流水记录</h2>
     <section class="card">
-      <p>最近一次出货扣减的匹配记录。导出按钮已移至页面顶部 <strong>「导出最近出货记录」</strong> 显眼位置，B列自动填充匹配到的订单号。</p>
+      <p>最近一次出货扣减的匹配记录。导出按钮在页面顶部 <strong>「导出最近一次出库匹配」</strong>，会导出最近上传的出库单原表格式，B列填匹配订单号，附SKU剩余数量表。</p>
     </section>
 
     <h2>未匹配出货</h2>
@@ -473,9 +473,9 @@
   <script src="assets/dashboard-data.js?v=20260905"></script>
   <script src="assets/supabase-config.js?v=20260905"></script>
   <script src="assets/charts.js?v=20260905"></script>
-  <script src="assets/app.js?v=20260917b"></script>
+  <script src="assets/app.js?v=20260918a"></script>
   <script src="assets/cloud-sync.js?v=20260905"></script>
-  <script src="assets/upload.js?v=20260917b"></script>
+  <script src="assets/upload.js?v=20260918a"></script>
 
 
 </body></html>
