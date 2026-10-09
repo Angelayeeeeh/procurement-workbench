@@ -383,11 +383,28 @@
     var btn = document.getElementById('exportShipFlowBtn');
     if (!btn) return;
     btn.onclick = function() {
+      var ver = window.LAIKE_SCRIPT_VERSION || '(旧版)';
       var data = window.LAIKE_DASHBOARD_DATA;
       var last = data && data.lastShipmentExport;
-      /* 优先用最近一次提交保存的匹配结果；若不存在但当前有预览，则直接用预览导出（无需提交扣减） */
+      /* 路径1：优先用最近一次提交保存的匹配结果（完美格式：原表+B列填订单号+拆单高亮） */
+      if (last && last.previewRows && last.previewRows.length) {
+        if (window.LAIKE_SHIP_EXPORT) {
+          window.LAIKE_SHIP_EXPORT({
+            rawRows: last.rawRows,
+            headers: last.headers,
+            headerIndex: last.headerIndex,
+            cols: last.cols,
+            previewRows: last.previewRows,
+            fileName: last.fileName || '出货表'
+          }, data);
+        } else {
+          alert('导出模块未加载，请强制刷新页面后重试');
+        }
+        return;
+      }
+      /* 路径2：当前有预览（上传后未提交），直接用预览导出 */
       var upload = window.LAIKE_UPLOAD_STATE;
-      if ((!last || !last.previewRows || !last.previewRows.length) && upload && upload.shipPreviewRows && upload.shipPreviewRows.length && upload.shipRawRows) {
+      if (upload && upload.shipPreviewRows && upload.shipPreviewRows.length && upload.shipRawRows) {
         if (window.LAIKE_SHIP_EXPORT) {
           window.LAIKE_SHIP_EXPORT({
             rawRows: upload.shipRawRows,
@@ -398,28 +415,57 @@
             fileName: upload.shipPreviewFileName || '出货表'
           }, data);
         } else {
-          alert('导出模块未加载，请刷新页面后重试');
+          alert('导出模块未加载，请强制刷新页面后重试');
         }
         return;
       }
-      if (!last || !last.previewRows || !last.previewRows.length) {
-        alert('暂无可导出的匹配结果。\n请先上传出货表，预览匹配后即可点此按钮导出（无需确认提交扣减）。\n如已提交过，可能是浏览器缓存了旧版脚本，请强制刷新页面（Ctrl+Shift+R / Mac: Cmd+Shift+R）后再试。');
+      /* 路径3：兜底——从已保存的出货流水记录(shipments)重建匹配表 */
+      var shipments = data && data.shipments ? data.shipments : [];
+      if (shipments.length) {
+        exportFromShipments(shipments, data);
         return;
       }
-      /* 使用共享导出函数：导出最近一次上传的出库单，B列填订单号，附SKU剩余表 */
-      if (window.LAIKE_SHIP_EXPORT) {
-        window.LAIKE_SHIP_EXPORT({
-          rawRows: last.rawRows,
-          headers: last.headers,
-          headerIndex: last.headerIndex,
-          cols: last.cols,
-          previewRows: last.previewRows,
-          fileName: last.fileName || '出货表'
-        }, data);
-      } else {
-        alert('导出模块未加载，请刷新页面后重试');
-      }
+      /* 全部为空 */
+      alert('暂无可导出的匹配结果（脚本版本: ' + ver + '）。\n\n可能原因：\n1. 浏览器缓存了旧版脚本——请强制刷新（Ctrl+Shift+R / Mac: Cmd+Shift+R）或用无痕窗口打开\n2. 提交扣减时本地存储已满导致匹配记录未保存\n3. 尚未上传过出货表\n\n如刚提交过扣减，请先强制刷新页面再点此按钮。');
     };
+  }
+
+  /* 兜底导出：从出货流水记录重建匹配表（无原表格式，但含全部匹配到的订单号） */
+  function exportFromShipments(shipments, data) {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = function() {
+      var wb = XLSX.utils.book_new();
+      /* Sheet1: 匹配明细 */
+      var rows = [['序号', '订单号(匹配)', 'SKU编码', '产品名称', '本次发货数量', '扣减后剩余库存', '匹配模式', '提交时间']];
+      shipments.forEach(function(r, i) {
+        rows.push([i + 1, r.订单号 || '', r.SKU编码 || '', r.产品名称 || '', r.本次发货数量 || 0, r.扣减后剩余库存 || 0, r.匹配模式 || '', r.提交时间 || '']);
+      });
+      var ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [{ wch: 6 }, { wch: 22 }, { wch: 14 }, { wch: 40 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 20 }];
+      XLSX.utils.book_append_sheet(wb, ws, '出货匹配记录');
+      /* Sheet2: SKU剩余数量 */
+      var skuMap = {}; var skuOrder = [];
+      if (data && data.rows) {
+        data.rows.forEach(function(r) {
+          var sku = String(r.SKU编码 || '').trim();
+          if (!sku) return;
+          if (!skuMap[sku]) { skuMap[sku] = { 品类: r.品类 || '', 产品名称: r.产品名称 || '', 总订单: 0, 已发货: 0, 剩余: 0, 行数: 0 }; skuOrder.push(sku); }
+          skuMap[sku].总订单 += Number(r.工厂总订单 || 0);
+          skuMap[sku].已发货 += Number(r.已发货数量 || 0);
+          skuMap[sku].剩余 += Number(r.工厂剩余数量 || 0);
+          skuMap[sku].行数 += 1;
+        });
+      }
+      var skuRows = [['品类', 'SKU编码', '产品名称', '工厂总订单', '已发货数量', '工厂剩余数量', '订单行数']];
+      skuOrder.forEach(function(sku) { var m = skuMap[sku]; skuRows.push([m.品类, sku, m.产品名称, m.总订单, m.已发货, m.剩余, m.行数]); });
+      var ws2 = XLSX.utils.aoa_to_sheet(skuRows);
+      ws2['!cols'] = [{ wch: 10 }, { wch: 14 }, { wch: 40 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 10 }];
+      XLSX.utils.book_append_sheet(wb, ws2, 'SKU剩余数量');
+      XLSX.writeFile(wb, '出货匹配记录_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+    };
+    s.onerror = function() { alert('XLSX库加载失败，请检查网络后重试'); };
+    document.head.appendChild(s);
   }
 
   [searchInput, statusFilter, categoryFilter].forEach(function(el) {
