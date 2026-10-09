@@ -765,8 +765,8 @@
     window.LAIKE_APP.refresh();
     clearPreview();
     state.shipPreviewRows = [];
-    showPreview('success', '<div class="preview-header"><h3>扣减完成，待一键保存</h3><p>已按确认预览执行出货扣减，并记录本次发货流水。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方“一键保存”同步云端。' : '注意：本地暂存失败，请不要关闭页面，先联系处理。') + '</p></div>');
-    setSaveStatus('已有出货扣减更新，待一键保存云端', 'bad');
+    showPreview('success', '<div class="preview-header"><h3>扣减完成，待一键保存</h3><p>已按确认预览执行出货扣减，并记录本次发货流水。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方“一键保存”。' : '注意：本地暂存失败，请不要关闭页面，先联系处理。') + '</p></div>');
+    setSaveStatus('已有出货扣减更新，待一键保存', 'bad');
     setTimeout(clearPreview, 5000);
   }
 
@@ -1045,8 +1045,8 @@
     window.LAIKE_APP.refresh();
     clearPreview();
     state.orderPreviewRows = [];
-    showPreview('success', '<div class="preview-header"><h3>订单追加完成，待一键保存</h3><p>已将上传的订单数据累计到现有数据，已发货数量保持不变。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方“一键保存”同步云端。' : '注意：本地暂存失败，请不要关闭页面，先联系处理。') + '</p></div>');
-    setSaveStatus('已有新订单更新，待一键保存云端', 'bad');
+    showPreview('success', '<div class="preview-header"><h3>订单追加完成，待一键保存</h3><p>已将上传的订单数据累计到现有数据，已发货数量保持不变。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方“一键保存”。' : '注意：本地暂存失败，请不要关闭页面，先联系处理。') + '</p></div>');
+    setSaveStatus('已有新订单更新，待一键保存', 'bad');
     setTimeout(clearPreview, 5000);
   }
 
@@ -1153,19 +1153,13 @@
       setSaveStatus('当前没有可保存的数据', 'bad');
       return;
     }
-    setSaveStatus('正在保存本地与云端...', '');
+    setSaveStatus('正在保存到本地浏览器...', '');
     var localSaved = window.LAIKE_STORAGE && window.LAIKE_STORAGE.save && window.LAIKE_STORAGE.save(false);
     if (!localSaved) {
       setSaveStatus('本地保存失败，请先不要关闭页面', 'bad');
       return;
     }
-    if (window.LAIKE_CLOUD && window.LAIKE_CLOUD.saveData) {
-      window.LAIKE_CLOUD.saveData(data, true).then(function(ok) {
-        setSaveStatus(ok ? '已一键保存到云端' : '本地已保存，云端保存未完成', ok ? 'ok' : 'bad');
-      });
-    } else {
-      setSaveStatus('本地已保存；云端未连接或未配置', 'bad');
-    }
+    setSaveStatus('已保存到本地浏览器。建议定期点"导出备份文件"保存到电脑硬盘。', 'ok');
   }
 
   /* ========== 手动录入新订单 ========== */
@@ -1335,8 +1329,8 @@
     window.LAIKE_APP.refresh();
     manualRows = [];
     renderManualEntry();
-    showManualPreview('success', '<div class="preview-header"><h3>手动录入完成，待一键保存</h3><p>已将手动录入的订单数据更新到库存：新增 <strong>' + addedCount + '</strong> 个 SKU，追加 <strong>' + appendedCount + '</strong> 个已有 SKU。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方"一键保存"同步云端。' : '注意：本地暂存失败，请不要关闭页面。') + '</p></div>');
-    setSaveStatus('已有手动录入更新，待一键保存云端', 'bad');
+    showManualPreview('success', '<div class="preview-header"><h3>手动录入完成，待一键保存</h3><p>已将手动录入的订单数据更新到库存：新增 <strong>' + addedCount + '</strong> 个 SKU，追加 <strong>' + appendedCount + '</strong> 个已有 SKU。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方"一键保存"。' : '注意：本地暂存失败，请不要关闭页面。') + '</p></div>');
+    setSaveStatus('已有手动录入更新，待一键保存', 'bad');
     setTimeout(function() {
       var el = document.getElementById('manualUploadPreview');
       if (el) { el.style.display = 'none'; el.innerHTML = ''; }
@@ -1552,8 +1546,8 @@
     if (el) { el.style.display = 'none'; el.innerHTML = ''; }
     state.priceVerifyRows = [];
     var totalBalance = data.summary.剩余库存余额 || 0;
-    showPreview('success', '<div class="preview-header"><h3>单价核对完成</h3><p>已更新 <strong>' + updatedCount + '</strong> 个SKU行的单价（成本）数据。库存数量未做任何修改。当前剩余库存余额：<strong>¥' + money(totalBalance) + '</strong>。' + (saved ? '已暂存，请点击下方"一键保存"同步云端。' : '') + '</p></div>');
-    setSaveStatus('单价已更新，待一键保存云端', 'bad');
+    showPreview('success', '<div class="preview-header"><h3>单价核对完成</h3><p>已更新 <strong>' + updatedCount + '</strong> 个SKU行的单价（成本）数据。库存数量未做任何修改。当前剩余库存余额：<strong>¥' + money(totalBalance) + '</strong>。' + (saved ? '已暂存，请点击下方"一键保存"。' : '') + '</p></div>');
+    setSaveStatus('单价已更新，待一键保存', 'bad');
     setTimeout(function() {
       var el = document.getElementById('uploadPreview');
       if (el) { el.style.display = 'none'; el.innerHTML = ''; }

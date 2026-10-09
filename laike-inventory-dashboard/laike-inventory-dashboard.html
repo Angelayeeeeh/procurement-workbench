@@ -366,8 +366,8 @@
       <div id="uploadPreview" class="upload-preview" style="display:none;"></div>
       <div class="save-panel">
         <div>
-          <h3>一键保存云端最新数据</h3>
-          <p>完成出货扣减或新订单追加后，点击保存会把当前库存、订单、未匹配出货等最新数据同步到云端；下次进入自动读取云端最新数据。</p>
+          <h3>一键保存到本地</h3>
+          <p>完成出货扣减或新订单追加后，点击保存会把当前库存、订单、未匹配出货等最新数据保存到当前浏览器本地；下次打开本页自动读取本地数据。建议定期点上方"导出备份文件"保存到电脑硬盘，防止清缓存丢失。</p>
         </div>
         <div class="update-bar" style="margin-top:0;">
           <button class="btn-primary" id="oneClickSaveBtn" type="button">一键保存</button>
@@ -472,16 +472,14 @@
   <script>if(!window.echarts){document.write('<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"><\/script>');}</script>
   <script src="./_shared/js/xlsx.full.min.js"></script>
   <script>if(!window.XLSX){document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');}</script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="assets/dashboard-data.js?v=20260905"></script>
-  <script src="assets/supabase-config.js?v=20260905"></script>
   <script src="assets/charts.js?v=20260905"></script>
-  <script src="assets/app.js?v=20261009a"></script>
-  <script src="assets/cloud-sync.js?v=20260905"></script>
-  <script src="assets/upload.js?v=20261009a"></script>
+  <script src="assets/app.js?v=20261009b"></script>
+  <script src="assets/cloud-sync.js?v=20261009b"></script>
+  <script src="assets/upload.js?v=20261009b"></script>
   <script>
     /* 版本标记：用于确认新版脚本已加载 */
-    window.LAIKE_SCRIPT_VERSION = '20261009a';
+    window.LAIKE_SCRIPT_VERSION = '20261009b';
   </script>
 
 
