@@ -430,6 +430,12 @@
       </table>
     </div>
 
+    <h2>出货流水记录</h2>
+    <section class="card">
+      <p>最近一次出货扣减的匹配记录。可导出为Excel，B列自动填充匹配到的订单号。</p>
+      <button id="exportShipFlowBtn" type="button" style="background:var(--accent-dark);color:#fff;border:none;padding:8px 20px;border-radius:8px;cursor:pointer;font-size:14px;margin-top:8px;">导出最近出货记录到Excel</button>
+    </section>
+
     <h2>未匹配出货</h2>
     <section class="card">
       <p>未匹配出货行数：<strong id="unmatchedCount">0</strong>。如果这里有数据，通常说明出货表中的订单号或型号在订单表中找不到对应行，需要人工核对。</p>
@@ -461,9 +467,9 @@
   <script src="assets/dashboard-data.js?v=20260905"></script>
   <script src="assets/supabase-config.js?v=20260905"></script>
   <script src="assets/charts.js?v=20260905"></script>
-  <script src="assets/app.js?v=20260916"></script>
+  <script src="assets/app.js?v=20260916b"></script>
   <script src="assets/cloud-sync.js?v=20260905"></script>
-  <script src="assets/upload.js?v=20260916b"></script>
+  <script src="assets/upload.js?v=20260916c"></script>
 
 
 </body></html>

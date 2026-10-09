@@ -373,9 +373,63 @@
     renderDetailHeaderFilters();
     renderDetails();
     renderSimpleTables();
+    bindExportShipFlow();
     if (window.LAIKE_CHARTS && window.LAIKE_CHARTS.refresh) {
       window.LAIKE_CHARTS.refresh();
     }
+  }
+
+  function bindExportShipFlow() {
+    var btn = document.getElementById('exportShipFlowBtn');
+    if (!btn) return;
+    btn.onclick = function() {
+      var data = window.LAIKE_DASHBOARD_DATA;
+      var shipments = data.shipments || [];
+      if (!shipments.length) { alert('暂无出货流水记录'); return; }
+      /* 加载XLSX库 */
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload = function() {
+        var wb = XLSX.utils.book_new();
+        /* Sheet1: 匹配结果汇总 */
+        var wsData = [['序号', '货品名称', '匹配GY号', '本次发货数量', '匹配订单号', '匹配模式', '扣减后剩余库存', '提交时间', '来源文件']];
+        shipments.forEach(function(s, i) {
+          wsData.push([
+            i + 1,
+            s.产品名称 || '',
+            s.SKU编码 || '',
+            s.本次发货数量 || 0,
+            s.订单号 || '',
+            s.匹配模式 || '',
+            s.扣减后剩余库存 || 0,
+            s.提交时间 || '',
+            s.来源文件 || ''
+          ]);
+        });
+        var ws = XLSX.utils.aoa_to_sheet(wsData);
+        ws['!cols'] = [{wch:6},{wch:40},{wch:14},{wch:12},{wch:22},{wch:12},{wch:14},{wch:20},{wch:20}];
+        XLSX.utils.book_append_sheet(wb, ws, '匹配结果');
+        /* Sheet2: 出库单格式(B列填充订单号) */
+        var origData = [['预订单号&型号','预订单IBOC号码','我司抬头','日期','货品名称','工厂发货抬头','我司抬头','匹配型号','规格','地名','收件人信息','单位','数量','辅助数量','发货数量']];
+        shipments.forEach(function(s) {
+          origData.push(['', s.订单号||'', '', '', s.产品名称||'', '', '', s.SKU编码||'', '', '', '', '', s.本次发货数量||0, '', s.本次发货数量||0]);
+        });
+        var ws2 = XLSX.utils.aoa_to_sheet(origData);
+        ws2['!cols'] = [{wch:16},{wch:22},{wch:10},{wch:12},{wch:40},{wch:12},{wch:10},{wch:14},{wch:8},{wch:16},{wch:40},{wch:6},{wch:10},{wch:10},{wch:10}];
+        XLSX.utils.book_append_sheet(wb, ws2, '出库单(已填充订单号)');
+        var fileName = '出货流水记录_' + new Date().toISOString().slice(0,10) + '.xlsx';
+        XLSX.writeFile(wb, fileName);
+      };
+      s.onerror = function() {
+        /* 尝试本地路径 */
+        var s2 = document.createElement('script');
+        s2.src = './_shared/js/xlsx.full.min.js';
+        s2.onload = function() { btn.click(); };
+        s2.onerror = function() { alert('XLSX库加载失败'); };
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s);
+    };
   }
 
   [searchInput, statusFilter, categoryFilter].forEach(function(el) {
