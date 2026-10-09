@@ -385,8 +385,25 @@
     btn.onclick = function() {
       var data = window.LAIKE_DASHBOARD_DATA;
       var last = data && data.lastShipmentExport;
+      /* 优先用最近一次提交保存的匹配结果；若不存在但当前有预览，则直接用预览导出（无需提交扣减） */
+      var upload = window.LAIKE_UPLOAD_STATE;
+      if ((!last || !last.previewRows || !last.previewRows.length) && upload && upload.shipPreviewRows && upload.shipPreviewRows.length && upload.shipRawRows) {
+        if (window.LAIKE_SHIP_EXPORT) {
+          window.LAIKE_SHIP_EXPORT({
+            rawRows: upload.shipRawRows,
+            headers: upload.shipHeaders,
+            headerIndex: upload.shipHeaderIndex,
+            cols: upload.shipCols,
+            previewRows: upload.shipPreviewRows,
+            fileName: upload.shipPreviewFileName || '出货表'
+          }, data);
+        } else {
+          alert('导出模块未加载，请刷新页面后重试');
+        }
+        return;
+      }
       if (!last || !last.previewRows || !last.previewRows.length) {
-        alert('暂无可导出的最近一次出货匹配结果。\n请先上传出货表 → 预览匹配 → 确认提交扣减，之后再点此按钮导出。');
+        alert('暂无可导出的匹配结果。\n请先上传出货表，预览匹配后即可点此按钮导出（无需确认提交扣减）。\n如已提交过，可能是浏览器缓存了旧版脚本，请强制刷新页面（Ctrl+Shift+R / Mac: Cmd+Shift+R）后再试。');
         return;
       }
       /* 使用共享导出函数：导出最近一次上传的出库单，B列填订单号，附SKU剩余表 */

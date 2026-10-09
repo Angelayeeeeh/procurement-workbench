@@ -1653,6 +1653,8 @@
   }
 
   window.LAIKE_UPLOAD = { deleteOrder: deleteOrder, rebuildSummaries: rebuildSummaries };
+  /* 暴露 state 引用，供 app.js 的顶部导出按钮读取当前预览（无需提交即可导出） */
+  window.LAIKE_UPLOAD_STATE = state;
 
   function setupDragDrop(zone, input, handler) {
     zone.addEventListener('click', function() { input.click(); });
