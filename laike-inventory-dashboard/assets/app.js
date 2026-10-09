@@ -386,50 +386,92 @@
       var data = window.LAIKE_DASHBOARD_DATA;
       var shipments = data.shipments || [];
       if (!shipments.length) { alert('暂无出货流水记录'); return; }
-      /* 加载XLSX库 */
+      /* 仅导出有匹配订单号的记录（无匹配记录的历史行跳过） */
+      var matched = shipments.filter(function(s) { return s.订单号 && String(s.订单号).trim(); });
+      if (!matched.length) { alert('暂无已匹配订单号的出货记录（历史无匹配记录已跳过，请重新上传出货表后导出）'); return; }
+      ensureXLSXLib(function(hasXLSX) {
+        if (!hasXLSX) { alert('XLSX库加载失败'); return; }
+        /* 按 提交时间+产品名称+SKU 聚合，识别FIFO拆单组（同一发货拆成多单） */
+        var groups = {};
+        var order = [];
+        matched.forEach(function(s) {
+          var key = (s.提交时间 || '') + '|' + (s.产品名称 || '') + '|' + (s.SKU编码 || '');
+          if (!groups[key]) { groups[key] = []; order.push(key); }
+          groups[key].push(s);
+        });
+        var HL_FILL = { patternType: 'solid', fgColor: { rgb: 'FFF3B0' } };
+        var HL_FONT = { bold: true, color: { rgb: 'B45309' } };
+        var highlightRows = [];
+        loadStyleLib(function(STYLE_LIB) {
+          var XLSX_LIB = STYLE_LIB || window.XLSX;
+          var hasStyle = !!STYLE_LIB;
+          var wb = XLSX_LIB.utils.book_new();
+          /* Sheet1: 出库单格式(B列填订单号，FIFO拆单行高亮标注) */
+          var origData = [['预订单号&型号','预订单IBOC号码','我司抬头','日期','货品名称','工厂发货抬头','我司抬头','匹配型号','规格','地名','收件人信息','单位','数量','辅助数量','发货数量']];
+          order.forEach(function(key) {
+            var grp = groups[key];
+            if (grp.length > 1) {
+              grp.forEach(function(s, ai) {
+                var row = ['★拆单(' + (ai + 1) + '/' + grp.length + ')', s.订单号||'', '', '', s.产品名称||'', '', '', s.SKU编码||'', '', '', '', '', s.本次发货数量||0, '', s.本次发货数量||0];
+                origData.push(row);
+                highlightRows.push(origData.length - 1);
+              });
+            } else {
+              origData.push(['', grp[0].订单号||'', '', '', grp[0].产品名称||'', '', '', grp[0].SKU编码||'', '', '', '', '', grp[0].本次发货数量||0, '', grp[0].本次发货数量||0]);
+            }
+          });
+          var ws2 = XLSX_LIB.utils.aoa_to_sheet(origData);
+          ws2['!cols'] = [{wch:16},{wch:22},{wch:10},{wch:12},{wch:40},{wch:12},{wch:10},{wch:14},{wch:8},{wch:16},{wch:40},{wch:6},{wch:10},{wch:10},{wch:10}];
+          if (hasStyle) {
+            highlightRows.forEach(function(r) {
+              for (var c = 0; c < 15; c++) {
+                var ref = XLSX_LIB.utils.encode_cell({ r: r, c: c });
+                if (!ws2[ref]) ws2[ref] = { t: 's', v: '' };
+                ws2[ref].s = { fill: HL_FILL, font: HL_FONT };
+              }
+            });
+          }
+          XLSX_LIB.utils.book_append_sheet(wb, ws2, '出库单(已填充订单号)');
+          /* Sheet2: 匹配结果汇总 */
+          var wsData = [['序号', '货品名称', '匹配GY号', '本次发货数量', '匹配订单号', '匹配模式', '扣减后剩余库存', '提交时间', '来源文件']];
+          matched.forEach(function(s, i) {
+            wsData.push([i+1, s.产品名称||'', s.SKU编码||'', s.本次发货数量||0, s.订单号||'', s.匹配模式||'', s.扣减后剩余库存||0, s.提交时间||'', s.来源文件||'']);
+          });
+          var ws = XLSX_LIB.utils.aoa_to_sheet(wsData);
+          ws['!cols'] = [{wch:6},{wch:40},{wch:14},{wch:12},{wch:22},{wch:12},{wch:14},{wch:20},{wch:20}];
+          XLSX_LIB.utils.book_append_sheet(wb, ws, '匹配结果');
+          var fileName = '出货流水记录_' + new Date().toISOString().slice(0,10) + '.xlsx';
+          XLSX_LIB.writeFile(wb, fileName);
+        });
+      });
+    };
+    function ensureXLSXLib(cb) {
+      if (window.XLSX) { cb(true); return; }
       var s = document.createElement('script');
       s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-      s.onload = function() {
-        var wb = XLSX.utils.book_new();
-        /* Sheet1: 匹配结果汇总 */
-        var wsData = [['序号', '货品名称', '匹配GY号', '本次发货数量', '匹配订单号', '匹配模式', '扣减后剩余库存', '提交时间', '来源文件']];
-        shipments.forEach(function(s, i) {
-          wsData.push([
-            i + 1,
-            s.产品名称 || '',
-            s.SKU编码 || '',
-            s.本次发货数量 || 0,
-            s.订单号 || '',
-            s.匹配模式 || '',
-            s.扣减后剩余库存 || 0,
-            s.提交时间 || '',
-            s.来源文件 || ''
-          ]);
-        });
-        var ws = XLSX.utils.aoa_to_sheet(wsData);
-        ws['!cols'] = [{wch:6},{wch:40},{wch:14},{wch:12},{wch:22},{wch:12},{wch:14},{wch:20},{wch:20}];
-        XLSX.utils.book_append_sheet(wb, ws, '匹配结果');
-        /* Sheet2: 出库单格式(B列填充订单号) */
-        var origData = [['预订单号&型号','预订单IBOC号码','我司抬头','日期','货品名称','工厂发货抬头','我司抬头','匹配型号','规格','地名','收件人信息','单位','数量','辅助数量','发货数量']];
-        shipments.forEach(function(s) {
-          origData.push(['', s.订单号||'', '', '', s.产品名称||'', '', '', s.SKU编码||'', '', '', '', '', s.本次发货数量||0, '', s.本次发货数量||0]);
-        });
-        var ws2 = XLSX.utils.aoa_to_sheet(origData);
-        ws2['!cols'] = [{wch:16},{wch:22},{wch:10},{wch:12},{wch:40},{wch:12},{wch:10},{wch:14},{wch:8},{wch:16},{wch:40},{wch:6},{wch:10},{wch:10},{wch:10}];
-        XLSX.utils.book_append_sheet(wb, ws2, '出库单(已填充订单号)');
-        var fileName = '出货流水记录_' + new Date().toISOString().slice(0,10) + '.xlsx';
-        XLSX.writeFile(wb, fileName);
-      };
+      s.onload = function() { cb(!!window.XLSX); };
       s.onerror = function() {
-        /* 尝试本地路径 */
         var s2 = document.createElement('script');
         s2.src = './_shared/js/xlsx.full.min.js';
-        s2.onload = function() { btn.click(); };
-        s2.onerror = function() { alert('XLSX库加载失败'); };
+        s2.onload = function() { cb(!!window.XLSX); };
+        s2.onerror = function() { cb(false); };
         document.head.appendChild(s2);
       };
       document.head.appendChild(s);
-    };
+    }
+    function loadStyleLib(cb) {
+      if (window.__XLSX_STYLE) { cb(window.__XLSX_STYLE); return; }
+      var orig = window.XLSX;
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.1/dist/xlsx.bundle.js';
+      s.onload = function() {
+        window.__XLSX_STYLE = window.XLSX;
+        if (orig) window.XLSX = orig;
+        cb(window.__XLSX_STYLE);
+      };
+      s.onerror = function() { cb(null); };
+      document.head.appendChild(s);
+    }
   }
 
   [searchInput, statusFilter, categoryFilter].forEach(function(el) {
