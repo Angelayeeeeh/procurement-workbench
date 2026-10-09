@@ -214,7 +214,7 @@
         return '<option value="' + esc(v) + '"' + (v === selected ? ' selected' : '') + '>' + esc(v) + '</option>';
       }).join('');
       return '<th><span class="th-label">' + esc(col.label) + '</span><select class="th-filter' + (selected ? ' active' : '') + '" data-field="' + esc(col.key) + '">' + opts + '</select></th>';
-    }).join('');
+    }).join('') + '<th><span class="th-label">操作</span></th>';
     detailHeaderRow.querySelectorAll('.th-filter').forEach(function(sel) {
       sel.addEventListener('change', function() {
         headerFilters[sel.getAttribute('data-field')] = sel.value;
@@ -224,6 +224,7 @@
     });
   }
 
+  var editRowIdx = -1; /* 当前正在编辑的行索引 */
   function renderDetails() {
     var data = window.LAIKE_DASHBOARD_DATA;
     var detailBody = document.getElementById('detailTableBody');
@@ -238,12 +239,16 @@
     });
     tableCount.textContent = '显示 ' + rows.length + ' / ' + data.rows.length + ' 行';
     if (!rows.length) {
-      detailBody.innerHTML = '<tr><td class="empty" colspan="14">没有符合条件的数据</td></tr>';
+      detailBody.innerHTML = '<tr><td class="empty" colspan="15">没有符合条件的数据</td></tr>';
       return;
     }
-    detailBody.innerHTML = rows.map(function(r) {
+    detailBody.innerHTML = rows.map(function(r, displayIdx) {
+      var realIdx = data.rows.indexOf(r);
       var progress = getProgressInfo(r);
       var remainCls = r.工厂剩余数量 <= 0 ? ' neg' : '';
+      if (realIdx === editRowIdx) {
+        return renderEditableRow(r, realIdx);
+      }
       return '<tr>' +
         '<td>' + esc(r.品类) + '</td>' +
         '<td>' + esc(r.工厂) + '</td>' +
@@ -259,8 +264,73 @@
         '<td class="num">' + num(r.出货次数) + '</td>' +
         '<td>' + esc(r.最晚发货) + '</td>' +
         '<td class="text">' + esc(r.出货去向) + '</td>' +
+        '<td><button class="btn-edit-row" data-edit-idx="' + realIdx + '" type="button" style="background:#eef;border:1px solid #36c;color:#36c;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:12px;">编辑</button></td>' +
         '</tr>';
     }).join('');
+    detailBody.querySelectorAll('.btn-edit-row').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        editRowIdx = parseInt(btn.getAttribute('data-edit-idx'), 10);
+        renderDetails();
+      });
+    });
+    var saveBtn = detailBody.querySelector('.btn-save-row');
+    if (saveBtn) saveBtn.addEventListener('click', saveRowEdit);
+    var cancelBtn = detailBody.querySelector('.btn-cancel-row');
+    if (cancelBtn) cancelBtn.addEventListener('click', function() { editRowIdx = -1; renderDetails(); });
+  }
+
+  function renderEditableRow(r, realIdx) {
+    var cats = ['润滑油', '制动液', '空调套装', '防冻液', '柴机油'];
+    var catOpts = cats.map(function(c) { return '<option' + (c === r.品类 ? ' selected' : '') + '>' + c + '</option>'; }).join('');
+    return '<tr style="background:#fffde6;">' +
+      '<td><select class="edit-input" data-field="品类">' + catOpts + '</select></td>' +
+      '<td><input class="edit-input" data-field="工厂" value="' + esc(r.工厂) + '" style="width:60px"></td>' +
+      '<td><input class="edit-input mono" data-field="订单号" value="' + esc(r.订单号) + '" style="width:120px"></td>' +
+      '<td><input class="edit-input mono" data-field="SKU编码" value="' + esc(r.SKU编码) + '" style="width:80px"></td>' +
+      '<td><input class="edit-input" data-field="产品名称" value="' + esc(r.产品名称) + '" style="width:200px"></td>' +
+      '<td><input class="edit-input" data-field="客户" value="' + esc(r.客户) + '" style="width:80px"></td>' +
+      '<td><input class="edit-input num" type="number" data-field="工厂总订单" value="' + esc(r.工厂总订单) + '" style="width:70px"></td>' +
+      '<td><input class="edit-input num" type="number" data-field="已发货数量" value="' + esc(r.已发货数量) + '" style="width:70px"></td>' +
+      '<td><input class="edit-input num" type="number" data-field="工厂剩余数量" value="' + esc(r.工厂剩余数量) + '" style="width:70px"></td>' +
+      '<td>-</td>' +
+      '<td>-</td>' +
+      '<td><input class="edit-input num" type="number" data-field="出货次数" value="' + esc(r.出货次数) + '" style="width:50px"></td>' +
+      '<td><input class="edit-input" data-field="最晚发货" value="' + esc(r.最晚发货) + '" style="width:90px"></td>' +
+      '<td><input class="edit-input" data-field="出货去向" value="' + esc(r.出货去向) + '" style="width:150px"></td>' +
+      '<td><button class="btn-save-row" data-save-idx="' + realIdx + '" type="button" style="background:#2a9d8f;border:1px solid #2a9d8f;color:#fff;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:12px;">保存</button> <button class="btn-cancel-row" type="button" style="background:#eee;border:1px solid #999;color:#666;padding:3px 10px;border-radius:6px;cursor:pointer;font-size:12px;">取消</button></td>' +
+      '</tr>';
+  }
+
+  function saveRowEdit(e) {
+    var idx = parseInt(e.target.getAttribute('data-save-idx'), 10);
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !data.rows || !data.rows[idx]) return;
+    var row = e.target.closest('tr');
+    var inputs = row.querySelectorAll('.edit-input');
+    inputs.forEach(function(input) {
+      var field = input.getAttribute('data-field');
+      var val = input.value;
+      if (field === '工厂总订单' || field === '已发货数量' || field === '工厂剩余数量' || field === '出货次数') {
+        val = Number(val) || 0;
+      }
+      data.rows[idx][field] = val;
+    });
+    /* 自动重算 */
+    var r = data.rows[idx];
+    r.工厂剩余数量 = Number(r.工厂总订单 || 0) - Number(r.已发货数量 || 0);
+    r.发货进度 = r.工厂总订单 > 0 ? r.已发货数量 / r.工厂总订单 : 0;
+    r.剩余库存余额 = r.工厂剩余数量 * (r.单价 || 0);
+    if (r.工厂总订单 <= 0) r.状态 = '待发货';
+    else if (r.已发货数量 <= 0) r.状态 = '待发货';
+    else if (r.已发货数量 >= r.工厂总订单) r.状态 = '全部发完';
+    else r.状态 = '部分发货';
+    if (window.LAIKE_UPLOAD && window.LAIKE_UPLOAD.rebuildSummaries) {
+      window.LAIKE_UPLOAD.rebuildSummaries(data);
+    }
+    var saved = window.LAIKE_STORAGE && window.LAIKE_STORAGE.save && window.LAIKE_STORAGE.save(false);
+    editRowIdx = -1;
+    refreshAll();
+    if (window.LAIKE_APP && window.LAIKE_APP.refresh) window.LAIKE_APP.refresh();
   }
 
   function renderSimpleTables() {
