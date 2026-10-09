@@ -199,11 +199,10 @@
       var headers = detected.headers;
       var cols = detected.cols;
       var missing = [];
-      if (cols.orderNo === -1) missing.push('订单号(IBOC)');
       if (cols.sku === -1) missing.push('型号(GY号)');
       if (cols.shipQty === -1) missing.push('发货数量');
       if (missing.length) {
-        showPreview('error', '出货表缺少必要列：' + missing.join('、') + '。检测到的表头：' + headers.join('、'));
+        showPreview('error', '出货表缺少必要列：' + missing.join('、') + '。检测到的表头：' + headers.join('、') + '。提示：订单号(IBOC)为可选列，缺失时将按SKU自动匹配（先进先出）。');
         return;
       }
       var parsed = [];
@@ -232,16 +231,23 @@
 
   function matchAndPreviewShipments(parsed, fileName) {
     var data = window.LAIKE_DASHBOARD_DATA;
-    state.shipPreviewRows = parsed.map(function(s) {
-      return calcShipmentPreviewRow({
+    if (!data || !data.rows) data = { rows: [] };
+    /* 记录每个库存行的本次已分配扣减量（FIFO跨行分配时累计） */
+    var fifoAllocated = {};
+    state.shipPreviewRows = [];
+    parsed.forEach(function(s) {
+      var item = {
         订单号: s.订单号,
         SKU编码: s.SKU编码,
         产品名称: s.货品名称,
         发货数量: s.发货数量,
         发货日期: s.发货日期,
         地名: s.地名,
-        行号: s.行号
-      }, data);
+        行号: s.行号,
+        fifoAllocations: []  /* FIFO分配明细：[{index, 订单号, 分配数量, 分配前剩余, 分配后剩余}] */
+      };
+      calcShipmentPreviewRowFIFO(item, data, fifoAllocated);
+      state.shipPreviewRows.push(item);
     });
     state.shipPreviewFileName = fileName;
     renderShipPreview();
@@ -256,16 +262,81 @@
     return -1;
   }
 
-  function calcShipmentPreviewRow(item, data) {
-    var idx = findDashboardRowIndex(item.订单号, item.SKU编码);
-    var base = idx >= 0 ? data.rows[idx] : null;
+  /* 按SKU匹配所有有剩余库存的行，返回按订单号排序的索引数组（先进先出） */
+  function findFIFORowsBySKU(sku, data, fifoAllocated) {
+    var result = [];
+    for (var i = 0; i < data.rows.length; i++) {
+      var r = data.rows[i];
+      if (String(r.SKU编码) !== String(sku)) continue;
+      var remain = Number(r.工厂剩余数量 || 0) - (fifoAllocated[i] || 0);
+      if (remain > 0) result.push(i);
+    }
+    /* 按订单号排序（先进先出：订单号小的排前面） */
+    result.sort(function(a, b) {
+      var oa = String(data.rows[a].订单号 || '');
+      var ob = String(data.rows[b].订单号 || '');
+      return oa < ob ? -1 : oa > ob ? 1 : a - b;
+    });
+    return result;
+  }
+
+  function calcShipmentPreviewRowFIFO(item, data, fifoAllocated) {
     var qty = parseNumberLike(item.发货数量);
-    item.targetIndex = idx;
-    item.matched = !!base;
-    item.产品名称 = item.产品名称 || (base ? base.产品名称 : '');
-    item.原剩余库存 = base ? Number(base.工厂剩余数量 || 0) : null;
-    item.扣减后剩余库存 = base ? Number(base.工厂剩余数量 || 0) - qty : null;
     item.发货数量 = qty;
+    item.matched = false;
+    item.产品名称 = item.产品名称 || '';
+    item.fifoAllocations = [];
+
+    /* 1. 先尝试订单号+SKU精确匹配 */
+    var idx = findDashboardRowIndex(item.订单号, item.SKU编码);
+    if (idx >= 0) {
+      var base = data.rows[idx];
+      var allocated = fifoAllocated[idx] || 0;
+      var remain = Number(base.工厂剩余数量 || 0) - allocated;
+      item.targetIndex = idx;
+      item.matched = true;
+      item.匹配模式 = '精确匹配';
+      item.产品名称 = item.产品名称 || base.产品名称 || '';
+      item.原剩余库存 = remain;
+      item.扣减后剩余库存 = remain - qty;
+      fifoAllocated[idx] = allocated + qty;
+      item.fifoAllocations.push({ index: idx, 订单号: base.订单号, 分配数量: qty, 分配前剩余: remain, 分配后剩余: remain - qty });
+      return item;
+    }
+
+    /* 2. 订单号不匹配或无订单号 → 按SKU走FIFO */
+    if (!item.SKU编码) return item;  /* 无SKU无法匹配 */
+
+    var fifoRows = findFIFORowsBySKU(item.SKU编码, data, fifoAllocated);
+    if (fifoRows.length === 0) return item;  /* 无可用库存 */
+
+    var remainingQty = qty;
+    var allAllocations = [];
+    for (var k = 0; k < fifoRows.length && remainingQty > 0; k++) {
+      var ri = fifoRows[k];
+      var row = data.rows[ri];
+      var alreadyAllocated = fifoAllocated[ri] || 0;
+      var avail = Number(row.工厂剩余数量 || 0) - alreadyAllocated;
+      if (avail <= 0) continue;
+      var allocQty = Math.min(avail, remainingQty);
+      fifoAllocated[ri] = alreadyAllocated + allocQty;
+      allAllocations.push({ index: ri, 订单号: row.订单号, 分配数量: allocQty, 分配前剩余: avail, 分配后剩余: avail - allocQty });
+      remainingQty -= allocQty;
+    }
+
+    if (allAllocations.length > 0) {
+      item.matched = true;
+      item.匹配模式 = allAllocations.length > 1 ? 'FIFO跨' + allAllocations.length + '单' : 'FIFO匹配';
+      item.产品名称 = item.产品名称 || data.rows[allAllocations[0].index].产品名称 || '';
+      item.fifoAllocations = allAllocations;
+      /* 预览显示：总扣减后剩余 = 所有分配行扣减后剩余之和 */
+      var totalAfter = allAllocations.reduce(function(s, a) { return s + a.分配后剩余; }, 0);
+      item.原剩余库存 = allAllocations.reduce(function(s, a) { return s + a.分配前剩余; }, 0);
+      item.扣减后剩余库存 = totalAfter;
+      item.未分配数量 = remainingQty;  /* 库存不足时的剩余部分 */
+    } else {
+      item.未分配数量 = qty;
+    }
     return item;
   }
 
@@ -273,26 +344,43 @@
     var rows = state.shipPreviewRows || [];
     var matchedCount = rows.filter(function(r) { return r.matched; }).length;
     var unmatchedCount = rows.length - matchedCount;
-    var negativeRemainCount = rows.filter(function(r) { return r.matched && r.扣减后剩余库存 < 0; }).length;
+    var fifoCount = rows.filter(function(r) { return r.matched && r.匹配模式 && r.匹配模式.indexOf('FIFO') >= 0; }).length;
+    var shortageCount = rows.filter(function(r) { return r.matched && r.未分配数量 && r.未分配数量 > 0; }).length;
     var html = '<div class="preview-header">' +
       '<h3>出货表智能识别结果</h3>' +
-      '<p>文件：<strong>' + esc(state.shipPreviewFileName) + '</strong>；共识别 <strong>' + rows.length + '</strong> 行，匹配 <strong>' + matchedCount + '</strong> 行，未匹配 <strong>' + unmatchedCount + '</strong> 行。确认提交前不会修改任何库存数据。</p>' +
+      '<p>文件：<strong>' + esc(state.shipPreviewFileName) + '</strong>；共识别 <strong>' + rows.length + '</strong> 行，匹配 <strong>' + matchedCount + '</strong> 行，未匹配 <strong>' + unmatchedCount + '</strong> 行。';
+    if (fifoCount > 0) html += ' 其中 <strong style="color:var(--accent-dark)">' + fifoCount + '</strong> 行为FIFO自动匹配。';
+    html += '确认提交前不会修改任何库存数据。</p>' +
       '</div>';
-    if (negativeRemainCount) {
-      html += '<p class="neg" style="margin:10px 0 0;font-weight:700">提醒：有 <strong>' + negativeRemainCount + '</strong> 行扣减后剩余库存小于 0，请核对后再提交。</p>';
+    if (shortageCount) {
+      html += '<p class="neg" style="margin:10px 0 0;font-weight:700">提醒：有 <strong>' + shortageCount + '</strong> 行库存不足以完全扣减，超出的部分将标记为未分配。</p>';
     }
     if (rows.length) {
-      html += '<div class="table-wrap" style="max-height:360px"><table><thead><tr>' +
-        '<th>订单号</th><th>GY号 / SKU</th><th>产品名称</th><th>本次发货数量</th><th>扣减后剩余库存</th><th>匹配状态</th><th>操作</th>' +
+      html += '<div class="table-wrap" style="max-height:420px"><table><thead><tr>' +
+        '<th>订单号(出库单)</th><th>GY号 / SKU</th><th>产品名称</th><th>本次发货数量</th><th>匹配模式</th><th>FIFO分配明细</th><th>扣减后剩余</th><th>状态</th><th>操作</th>' +
         '</tr></thead><tbody>';
       rows.forEach(function(r, i) {
         var remainText = r.matched ? num(r.扣减后剩余库存) : '未匹配';
         var remainCls = r.matched && r.扣减后剩余库存 < 0 ? ' neg' : '';
+        var modeText = r.matched ? (r.匹配模式 || '已匹配') : '未匹配';
+        var modeCls = r.matched ? (r.匹配模式 && r.匹配模式.indexOf('FIFO') >= 0 ? 'warn' : 'ok') : 'bad';
+        /* FIFO分配明细 */
+        var fifoText = '';
+        if (r.fifoAllocations && r.fifoAllocations.length > 0) {
+          fifoText = r.fifoAllocations.map(function(a) {
+            return esc(a.订单号) + ': ' + num(a.分配数量) + '个 (剩余' + num(a.分配后剩余) + ')';
+          }).join('<br>');
+          if (r.未分配数量 && r.未分配数量 > 0) {
+            fifoText += '<br><span class="neg">库存不足，未分配' + num(r.未分配数量) + '个</span>';
+          }
+        }
         html += '<tr>' +
-          '<td><input class="preview-input mono" data-ship-field="订单号" data-ship-index="' + i + '" value="' + esc(r.订单号) + '"></td>' +
+          '<td><input class="preview-input mono" data-ship-field="订单号" data-ship-index="' + i + '" value="' + esc(r.订单号) + '" placeholder="(空则FIFO自动匹配)"></td>' +
           '<td><input class="preview-input mono" data-ship-field="SKU编码" data-ship-index="' + i + '" value="' + esc(r.SKU编码) + '"></td>' +
           '<td><input class="preview-input" data-ship-field="产品名称" data-ship-index="' + i + '" value="' + esc(r.产品名称) + '"></td>' +
           '<td><input class="preview-input num" type="number" min="0" step="1" data-ship-field="发货数量" data-ship-index="' + i + '" value="' + esc(r.发货数量) + '"></td>' +
+          '<td><span class="pill ' + modeCls + '">' + esc(modeText) + '</span></td>' +
+          '<td style="font-size:12px;line-height:1.6">' + fifoText + '</td>' +
           '<td class="num' + remainCls + '">' + remainText + '</td>' +
           '<td>' + (r.matched ? '<span class="pill ok">已匹配</span>' : '<span class="pill bad">未匹配</span>') + '</td>' +
           '<td><button type="button" class="preview-delete-btn" data-ship-delete="' + i + '">删除</button></td>' +
@@ -305,12 +393,27 @@
     html += '<div class="update-bar">' +
       '<button class="btn-primary" id="applyShipBtn"' + (matchedCount ? '' : ' disabled') + '>确认提交扣减</button>' +
       '<button id="cancelUpdateBtn">取消</button>' +
-      '<span class="hint">可先修改或删除错误行；只有点击确认提交扣减后才会更新库存</span>' +
+      '<span class="hint">订单号为空时自动FIFO匹配；可先修改或删除错误行；确认提交后才会更新库存</span>' +
       '</div>';
     showPreview('ok', html);
     document.getElementById('applyShipBtn').addEventListener('click', function() { applyShipmentUpdate(); });
     document.getElementById('cancelUpdateBtn').addEventListener('click', clearPreview);
     bindShipPreviewEvents();
+  }
+
+  function recomputeFIFOPreview() {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !data.rows) data = { rows: [] };
+    var fifoAllocated = {};
+    var parsed = state.shipPreviewRows.map(function(r) {
+      return { 订单号: r.订单号, SKU编码: r.SKU编码, 货品名称: r.产品名称, 发货数量: r.发货数量, 发货日期: r.发货日期, 地名: r.地名, 行号: r.行号 };
+    });
+    state.shipPreviewRows = [];
+    parsed.forEach(function(s) {
+      var item = { 订单号: s.订单号, SKU编码: s.SKU编码, 产品名称: s.货品名称, 发货数量: s.发货数量, 发货日期: s.发货日期, 地名: s.地名, 行号: s.行号, fifoAllocations: [] };
+      calcShipmentPreviewRowFIFO(item, data, fifoAllocated);
+      state.shipPreviewRows.push(item);
+    });
   }
 
   function bindShipPreviewEvents() {
@@ -321,7 +424,7 @@
         var field = input.getAttribute('data-ship-field');
         if (!state.shipPreviewRows[idx]) return;
         state.shipPreviewRows[idx][field] = field === '发货数量' ? parseNumberLike(input.value) : input.value.trim();
-        state.shipPreviewRows[idx] = calcShipmentPreviewRow(state.shipPreviewRows[idx], window.LAIKE_DASHBOARD_DATA);
+        recomputeFIFOPreview();
         renderShipPreview();
       });
     });
@@ -329,6 +432,7 @@
       btn.addEventListener('click', function() {
         var idx = parseInt(btn.getAttribute('data-ship-delete'), 10);
         state.shipPreviewRows.splice(idx, 1);
+        recomputeFIFOPreview();
         renderShipPreview();
       });
     });
@@ -342,23 +446,36 @@
     var matched = {};
     var confirmedFlow = [];
     previewRows.forEach(function(s) {
-      s = calcShipmentPreviewRow(s, data);
-      if (s.matched && s.发货数量 > 0) {
-        var idx = s.targetIndex;
-        if (!matched[idx]) matched[idx] = { qty: 0, dates: [], dests: {}, count: 0 };
-        matched[idx].qty += s.发货数量;
-        matched[idx].count++;
-        if (s.发货日期) matched[idx].dates.push(s.发货日期);
-        if (s.地名) matched[idx].dests[s.地名] = true;
-        confirmedFlow.push({
-          提交时间: new Date().toISOString(),
-          订单号: s.订单号,
-          SKU编码: s.SKU编码,
-          产品名称: s.产品名称,
-          本次发货数量: s.发货数量,
-          扣减后剩余库存: s.扣减后剩余库存,
-          来源文件: state.shipPreviewFileName || state.shipFileName || '用户上传出货表'
+      if (s.matched && s.发货数量 > 0 && s.fifoAllocations && s.fifoAllocations.length > 0) {
+        s.fifoAllocations.forEach(function(a) {
+          var idx = a.index;
+          if (!matched[idx]) matched[idx] = { qty: 0, dates: [], dests: {}, count: 0 };
+          matched[idx].qty += a.分配数量;
+          matched[idx].count++;
+          if (s.发货日期) matched[idx].dates.push(s.发货日期);
+          if (s.地名) matched[idx].dests[s.地名] = true;
+          confirmedFlow.push({
+            提交时间: new Date().toISOString(),
+            订单号: a.订单号,
+            SKU编码: s.SKU编码,
+            产品名称: s.产品名称,
+            本次发货数量: a.分配数量,
+            扣减后剩余库存: a.分配后剩余,
+            来源文件: state.shipPreviewFileName || state.shipFileName || '用户上传出货表',
+            匹配模式: s.匹配模式 || '精确匹配'
+          });
         });
+        if (s.未分配数量 && s.未分配数量 > 0) {
+          unmatched.push({
+            发货日期: s.发货日期,
+            订单号: s.订单号 || '(FIFO库存不足)',
+            SKU编码: s.SKU编码,
+            货品名称: s.产品名称,
+            地名: s.地名,
+            发货数量: s.未分配数量,
+            出货表行号: s.行号
+          });
+        }
       } else {
         unmatched.push({
           发货日期: s.发货日期,
