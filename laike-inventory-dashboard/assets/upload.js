@@ -232,6 +232,20 @@
   function matchAndPreviewShipments(parsed, fileName) {
     var data = window.LAIKE_DASHBOARD_DATA;
     if (!data || !data.rows) data = { rows: [] };
+    /* 构建产品名称→GY号映射表（当出库单SKU列为公式无法读取时，通过货品名称反推） */
+    var nameToSku = {};
+    data.rows.forEach(function(r) {
+      if (r.产品名称 && r.SKU编码) {
+        var name = String(r.产品名称).trim();
+        if (!nameToSku[name]) nameToSku[name] = r.SKU编码;
+      }
+    });
+    /* 同时构建去掉GTE-前缀的映射，提高匹配率 */
+    var nameToSkuNoPrefix = {};
+    Object.keys(nameToSku).forEach(function(name) {
+      var stripped = name.replace(/^GTE[-—]/i, '').trim();
+      if (stripped && !nameToSkuNoPrefix[stripped]) nameToSkuNoPrefix[stripped] = nameToSku[name];
+    });
     /* 记录每个库存行的本次已分配扣减量（FIFO跨行分配时累计） */
     var fifoAllocated = {};
     state.shipPreviewRows = [];
@@ -246,6 +260,24 @@
         行号: s.行号,
         fifoAllocations: []  /* FIFO分配明细：[{index, 订单号, 分配数量, 分配前剩余, 分配后剩余}] */
       };
+      /* 如果SKU为空但产品名称有值，尝试从库存数据中反推GY号 */
+      if ((!item.SKU编码 || String(item.SKU编码).indexOf('VLOOKUP') >= 0 || String(item.SKU编码).indexOf('=') === 0) && item.产品名称) {
+        var name = String(item.产品名称).trim();
+        if (nameToSku[name]) {
+          item.SKU编码 = nameToSku[name];
+          item.GY反推 = true;
+        } else {
+          /* 去掉GTE-前缀后再匹配 */
+          var stripped = name.replace(/^GTE[-—]/i, '').trim();
+          if (nameToSkuNoPrefix[stripped]) {
+            item.SKU编码 = nameToSkuNoPrefix[stripped];
+            item.GY反推 = true;
+          } else if (nameToSku[stripped]) {
+            item.SKU编码 = nameToSku[stripped];
+            item.GY反推 = true;
+          }
+        }
+      }
       calcShipmentPreviewRowFIFO(item, data, fifoAllocated);
       state.shipPreviewRows.push(item);
     });
@@ -392,13 +424,110 @@
     }
     html += '<div class="update-bar">' +
       '<button class="btn-primary" id="applyShipBtn"' + (matchedCount ? '' : ' disabled') + '>确认提交扣减</button>' +
+      '<button class="btn-primary" id="exportMatchBtn" style="background:var(--accent-dark);border-color:var(--accent-dark)"' + (matchedCount ? '' : ' disabled') + '>导出匹配结果到Excel</button>' +
       '<button id="cancelUpdateBtn">取消</button>' +
-      '<span class="hint">订单号为空时自动FIFO匹配；可先修改或删除错误行；确认提交后才会更新库存</span>' +
+      '<span class="hint">订单号为空时自动FIFO匹配；可先修改或删除错误行；确认提交后才会更新库存；导出结果保留原表格格式并填充B列订单号</span>' +
       '</div>';
     showPreview('ok', html);
     document.getElementById('applyShipBtn').addEventListener('click', function() { applyShipmentUpdate(); });
+    var exportBtn = document.getElementById('exportMatchBtn');
+    if (exportBtn) exportBtn.addEventListener('click', function() { exportShipMatchResult(); });
     document.getElementById('cancelUpdateBtn').addEventListener('click', clearPreview);
     bindShipPreviewEvents();
+  }
+
+  function exportShipMatchResult() {
+    var rows = state.shipPreviewRows || [];
+    if (!rows.length) return;
+    /* 构建导出数据：保留原始出库单所有列，B列填充匹配到的订单号 */
+    var exportRows = [];
+    rows.forEach(function(r, idx) {
+      var matchedOrderNo = '';
+      var matchedGY = r.SKU编码 || '';
+      var matchMode = r.matched ? (r.匹配模式 || '已匹配') : '未匹配';
+      if (r.fifoAllocations && r.fifoAllocations.length > 0) {
+        /* FIFO可能匹配多个订单，订单号用逗号拼接 */
+        var orders = [];
+        var seenOrders = {};
+        r.fifoAllocations.forEach(function(a) {
+          if (!seenOrders[a.订单号]) {
+            seenOrders[a.订单号] = true;
+            orders.push(a.订单号);
+          }
+        });
+        matchedOrderNo = orders.join(',');
+      } else if (r.订单号) {
+        matchedOrderNo = r.订单号;
+      }
+      exportRows.push({
+        rowIndex: idx,
+        货品名称: r.产品名称 || '',
+        发货数量: r.发货数量 || 0,
+        匹配订单号: matchedOrderNo,
+        匹配GY号: matchedGY,
+        匹配模式: matchMode,
+        FIFO分配明细: r.fifoAllocations ? r.fifoAllocations.map(function(a) {
+          return a.订单号 + ':' + a.分配数量 + '个';
+        }).join('; ') : '',
+        未分配数量: r.未分配数量 || 0,
+        发货日期: r.发货日期 || '',
+        地名: r.地名 || ''
+      });
+    });
+    /* 用XLSX生成Excel */
+    ensureXLSX(function(err) {
+      if (err) { alert('XLSX库加载失败，无法导出'); return; }
+      var wb = XLSX.utils.book_new();
+      /* 主表：匹配结果汇总 */
+      var wsData = [
+        ['序号', '货品名称', '匹配GY号', '发货数量', '匹配订单号(B列)', '匹配模式', 'FIFO分配明细', '未分配数量', '发货日期', '地名']
+      ];
+      exportRows.forEach(function(r) {
+        wsData.push([
+          r.rowIndex + 1,
+          r.货品名称,
+          r.匹配GY号,
+          r.发货数量,
+          r.匹配订单号,
+          r.匹配模式,
+          r.FIFO分配明细,
+          r.未分配数量,
+          r.发货日期,
+          r.地名
+        ]);
+      });
+      var ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws['!cols'] = [{ wch: 6 }, { wch: 40 }, { wch: 14 }, { wch: 10 }, { wch: 22 }, { wch: 12 }, { wch: 50 }, { wch: 12 }, { wch: 12 }, { wch: 16 }];
+      XLSX.utils.book_append_sheet(wb, ws, '匹配结果');
+      /* 第二个sheet：原始出库单格式（B列填充订单号） */
+      var origData = [
+        ['预订单号&型号', '预订单IBOC号码', '我司抬头', '日期', '货品名称', '工厂发货抬头', '我司抬头', '匹配型号', '规格', '地名', '收件人信息', '单位', '数量', '辅助数量', '发货数量']
+      ];
+      exportRows.forEach(function(r, i) {
+        origData.push([
+          '',                                    /* A: 预订单号&型号 */
+          r.匹配订单号,                          /* B: 预订单IBOC号码（填充匹配到的订单号） */
+          '',                                    /* C: 我司抬头 */
+          r.发货日期,                             /* D: 日期 */
+          r.货品名称,                             /* E: 货品名称 */
+          '',                                    /* F: 工厂发货抬头 */
+          '',                                    /* G: 我司抬头 */
+          r.匹配GY号,                             /* H: 匹配型号（GY号） */
+          '',                                    /* I: 规格 */
+          r.地名,                                /* J: 地名 */
+          '',                                    /* K: 收件人信息 */
+          '',                                    /* L: 单位 */
+          r.发货数量,                             /* M: 数量 */
+          '',                                    /* N: 辅助数量 */
+          r.发货数量                              /* O: 发货数量 */
+        ]);
+      });
+      var ws2 = XLSX.utils.aoa_to_sheet(origData);
+      ws2['!cols'] = [{ wch: 16 }, { wch: 22 }, { wch: 10 }, { wch: 12 }, { wch: 40 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 8 }, { wch: 16 }, { wch: 40 }, { wch: 6 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
+      XLSX.utils.book_append_sheet(wb, ws2, '出库单(已填充订单号)');
+      var fileName = '出库匹配结果_' + (state.shipPreviewFileName || '出货表').replace(/\.xlsx?$/i, '') + '_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+      XLSX.writeFile(wb, fileName);
+    });
   }
 
   function recomputeFIFOPreview() {
