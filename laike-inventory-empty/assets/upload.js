@@ -819,7 +819,7 @@
           总金额: cols.totalAmount >= 0 ? parseNumberLike(r[cols.totalAmount]) : 0,
           客户: cols.customer >= 0 ? String(r[cols.customer] || '').trim() : '',
           抬头: cols.entity >= 0 ? String(r[cols.entity] || '').trim() : '',
-          工厂: cols.factory >= 0 ? String(r[cols.factory] || '').trim() : '莱克',
+          工厂: cols.factory >= 0 ? String(r[cols.factory] || '').trim() : '小松',
           单位: cols.unit >= 0 ? String(r[cols.unit] || '').trim() : ''
         });
       }
@@ -861,7 +861,7 @@
         总金额: parseNumberLike(o.总金额),
         客户: o.客户,
         抬头: o.抬头,
-        工厂: o.工厂 || '莱克',
+        工厂: o.工厂 || '小松',
         单位: o.单位,
         行数: 1
       };
@@ -1167,7 +1167,7 @@
   var MANUAL_CATEGORIES = ['润滑油', '制动液', '空调套装', '防冻液', '柴机油'];
 
   function emptyManualRow() {
-    return { 品类: '', 工厂: '莱克', 订单号: '', SKU编码: '', 产品名称: '', 下单数量: 0 };
+    return { 品类: '', 工厂: '小松', 订单号: '', SKU编码: '', 产品名称: '', 下单数量: 0 };
   }
 
   function manualRowStatus(row) {
@@ -1296,7 +1296,7 @@
       } else {
         data.rows.push({
           品类: g.品类,
-          工厂: g.工厂 || '莱克',
+          工厂: g.工厂 || '小松',
           订单号: g.订单号,
           订单日期: '',
           SKU编码: g.SKU编码,

@@ -52,7 +52,7 @@
       var a = document.createElement('a');
       var ts = new Date().toISOString().slice(0, 10);
       a.href = url;
-      a.download = '莱克库存备份_' + ts + '.json';
+      a.download = '小松库存备份_' + ts + '.json';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
