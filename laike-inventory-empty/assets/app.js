@@ -157,44 +157,6 @@
     }).join('');
   }
 
-  function renderFocusSkuBoard() {
-    var data = window.LAIKE_DASHBOARD_DATA;
-    var board = document.getElementById('focusSkuBoard');
-    if (!board) return;
-    var focusCats = data.categorySummary.filter(function(c) { return c.品类 !== '润滑油'; }).map(function(c) { return c.品类; });
-    board.innerHTML = focusCats.map(function(cat) {
-      var rows = data.skuSummary.filter(function(r) { return r.品类 === cat; });
-      if (!rows.length) {
-        return '<article class="card focus-category"><h3>' + esc(cat) + '<span>暂无 SKU</span></h3><p>当前数据里没有该品类。</p></article>';
-      }
-      var totalOrder = rows.reduce(function(s, r) { return s + Number(r.工厂总订单 || 0); }, 0);
-      var totalShip = rows.reduce(function(s, r) { return s + Number(r.已发货数量 || 0); }, 0);
-      var totalRemain = rows.reduce(function(s, r) { return s + Number(r.工厂剩余数量 || 0); }, 0);
-      var cards = rows.map(function(r) {
-        var info = getProgressInfo({ 工厂总订单: r.工厂总订单, 已发货数量: r.已发货数量 });
-        var remainCls = r.工厂剩余数量 <= 0 ? ' neg' : '';
-        return '<div class="sku-mini-card">' +
-          '<div class="sku-mini-title"><strong>' + esc(r.SKU编码) + '</strong><span>' + esc(r.产品名称) + '</span></div>' +
-          '<div class="sku-mini-metrics">' +
-          '<div><strong>' + num(r.工厂总订单) + '</strong><span>工厂总订单</span></div>' +
-          '<div><strong>' + num(r.已发货数量) + '</strong><span>已发货数量</span></div>' +
-          '<div><strong class="' + remainCls.trim() + '">' + num(r.工厂剩余数量) + '</strong><span>工厂剩余数量</span></div>' +
-          '</div>' +
-          '<span class="progress-cell"><span class="progress"><span class="bar ' + info.cls + '" style="width:' + info.width + '%"></span></span><span class="progress-text">' + info.text + '</span></span>' +
-          '</div>';
-      }).join('');
-      return '<article class="card focus-category">' +
-        '<h3>' + esc(cat) + '<span>' + rows.length + ' 个 SKU</span></h3>' +
-        '<div class="mini-metrics">' +
-        '<div><strong>' + num(totalOrder) + '</strong><span>品类总订单</span></div>' +
-        '<div><strong>' + num(totalShip) + '</strong><span>品类已发货</span></div>' +
-        '<div><strong>' + num(totalRemain) + '</strong><span>品类剩余</span></div>' +
-        '</div>' +
-        cards +
-        '</article>';
-    }).join('');
-  }
-
   function renderDetailHeaderFilters() {
     var data = window.LAIKE_DASHBOARD_DATA;
     detailHeaderRow.innerHTML = detailColumns.map(function(col) {
@@ -378,7 +340,6 @@
     renderStats();
     renderCategoryFilter();
     renderCategoryCards();
-    renderFocusSkuBoard();
     renderDetailHeaderFilters();
     renderDetails();
     renderSimpleTables();
