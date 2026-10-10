@@ -1092,7 +1092,7 @@
     data.categorySummary = Object.values(catMap);
     var orderMap = {};
     data.rows.forEach(function(r) {
-      var key = r.品类 + '|' + r.订单号;
+      var key = r.订单号;
       if (!orderMap[key]) orderMap[key] = { 品类: r.品类, 订单号: r.订单号, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 剩余库存余额: 0, SKU行数: 0, 状态: '' };
       var o = orderMap[key];
       o.工厂总订单 += r.工厂总订单;
@@ -1615,25 +1615,27 @@
         setSaveStatus('恢复失败，请重试', 'bad');
       }
     });
+    var verifyBtn = document.getElementById('verifyAmountBtn');
+    if (verifyBtn) verifyBtn.addEventListener('click', verifyAmount);
     renderManualEntry();
   }
 
   function deleteOrder(orderNo, category) {
     var data = window.LAIKE_DASHBOARD_DATA;
     if (!data || !data.rows) return;
-    var matchRows = data.rows.filter(function(r) { return r.订单号 === orderNo && r.品类 === category; });
+    var matchRows = data.rows.filter(function(r) { return r.订单号 === orderNo; });
     if (!matchRows.length) {
-      alert('未找到订单：' + category + ' / ' + orderNo);
+      alert('未找到订单：' + orderNo);
       return;
     }
-    if (!confirm('确定删除整张订单？\n品类：' + category + '\n订单号：' + orderNo + '\n包含 ' + matchRows.length + ' 个SKU行\n该订单的所有库存数据将一并删除。')) return;
+    if (!confirm('确定删除整张订单？\n订单号：' + orderNo + '\n包含 ' + matchRows.length + ' 个SKU行\n该订单的所有库存数据将一并删除。')) return;
     /* 备份当前数据 */
     try {
       var old = localStorage.getItem('laike_inventory_dashboard_saved_data_v1_empty');
       if (old) localStorage.setItem('laike_inventory_dashboard_backup_v1_empty', old);
     } catch (e) {}
     /* 删除该订单的所有行 */
-    data.rows = data.rows.filter(function(r) { return !(r.订单号 === orderNo && r.品类 === category); });
+    data.rows = data.rows.filter(function(r) { return r.订单号 !== orderNo; });
     /* 重新计算汇总 */
     rebuildSummaries(data);
     /* 保存并刷新 */
@@ -1652,9 +1654,9 @@
   function editOrder(orderNo, category) {
     var data = window.LAIKE_DASHBOARD_DATA;
     if (!data || !data.rows) return;
-    var matchRows = data.rows.filter(function(r) { return r.订单号 === orderNo && r.品类 === category; });
+    var matchRows = data.rows.filter(function(r) { return r.订单号 === orderNo; });
     if (!matchRows.length) {
-      alert('未找到订单：' + category + ' / ' + orderNo);
+      alert('未找到订单：' + orderNo);
       return;
     }
     var oldTotal = matchRows.reduce(function(s, r) { return s + Number(r.工厂总订单 || 0); }, 0);
@@ -1663,7 +1665,6 @@
     /* 弹出编辑框 */
     var newOrderNo = window.prompt(
       '【编辑订单号】\n' +
-      '品类：' + category + '\n' +
       '当前订单号：' + orderNo + '\n' +
       'SKU行数：' + skuCount + ' 行\n' +
       '已发货数量：' + shipped + '\n' +
@@ -1676,7 +1677,6 @@
     if (!newOrderNo) { alert('订单号不能为空'); return; }
     var newTotalStr = window.prompt(
       '【编辑订单总数】\n' +
-      '品类：' + category + '\n' +
       '订单号：' + newOrderNo + '\n' +
       'SKU行数：' + skuCount + ' 行\n' +
       '已发货数量：' + shipped + '（不会改动）\n' +
@@ -1696,7 +1696,7 @@
     var changes = [];
     if (newOrderNo !== orderNo) changes.push('订单号：' + orderNo + ' → ' + newOrderNo);
     if (newTotal !== oldTotal) changes.push('订单总数：' + oldTotal + ' → ' + newTotal);
-    if (!confirm('确认修改？\n品类：' + category + '\n' + changes.join('\n') + '\n\n（已发货数量 ' + shipped + ' 不变，工厂剩余数量会自动重算）')) return;
+    if (!confirm('确认修改？\n' + changes.join('\n') + '\n\n（已发货数量 ' + shipped + ' 不变，工厂剩余数量会自动重算）')) return;
     /* 备份当前数据 */
     try {
       var old = localStorage.getItem('laike_inventory_dashboard_saved_data_v1_empty');
@@ -1738,6 +1738,149 @@
       window.LAIKE_APP.refresh();
     }
     setSaveStatus('已修改订单 ' + newOrderNo + '，数据已更新', 'ok');
+  }
+
+  /* 金额核对：列出每个订单/每个SKU行 Σ(数量×单价) vs 总金额 的差异 */
+  function verifyAmount() {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !data.rows || !data.rows.length) {
+      alert('暂无订单数据，无法核对金额。');
+      return;
+    }
+    var THRESH = 0.01; /* 差异阈值（元），避免浮点误差 */
+    /* 行级核对：每个SKU 数量×单价 vs 总金额 */
+    var rowDiff = [];
+    data.rows.forEach(function(r) {
+      var qty = Number(r.工厂总订单 || 0);
+      var price = Number(r.单价 || 0);
+      var total = Number(r.总金额 || 0);
+      var calc = qty * price;
+      var diff = total - calc;
+      /* 价格或金额都为0时不报异常（说明该字段未上传），只在一边有值另一边为0时才标出 */
+      var hasPrice = price > 0;
+      var hasTotal = total > 0;
+      if (Math.abs(diff) > THRESH && (hasPrice || hasTotal)) {
+        rowDiff.push({
+          订单号: r.订单号,
+          SKU编码: r.SKU编码,
+          产品名称: r.产品名称 || r.品名 || '',
+          数量: qty,
+          单价: price,
+          应算金额: calc,
+          登记总金额: total,
+          差异: diff
+        });
+      }
+    });
+    /* 订单级核对：Σ(数量×单价) vs Σ(总金额) */
+    var orderMap = {};
+    data.rows.forEach(function(r) {
+      var key = r.订单号;
+      if (!orderMap[key]) orderMap[key] = { 订单号: key, calcSum: 0, totalSum: 0, qtySum: 0, rows: 0 };
+      var o = orderMap[key];
+      o.calcSum += Number(r.工厂总订单 || 0) * Number(r.单价 || 0);
+      o.totalSum += Number(r.总金额 || 0);
+      o.qtySum += Number(r.工厂总订单 || 0);
+      o.rows++;
+    });
+    var orderDiff = [];
+    Object.values(orderMap).forEach(function(o) {
+      var diff = o.totalSum - o.calcSum;
+      if (Math.abs(diff) > THRESH) {
+        orderDiff.push({
+          订单号: o.订单号,
+          数量合计: o.qtySum,
+          SKU行数: o.rows,
+          应算总额: o.calcSum,
+          登记总额: o.totalSum,
+          差异: diff
+        });
+      }
+    });
+    /* 构建浮层 */
+    var old = document.getElementById('amountVerifyModal');
+    if (old) old.parentNode.removeChild(old);
+    var overlay = document.createElement('div');
+    overlay.id = 'amountVerifyModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;';
+    var card = document.createElement('div');
+    card.style.cssText = 'background:#fff;border-radius:14px;max-width:1100px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+    var head = document.createElement('div');
+    head.style.cssText = 'padding:18px 24px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;';
+    var allOk = !rowDiff.length && !orderDiff.length;
+    head.innerHTML = '<div><h3 style="margin:0;color:#333;font-size:18px;">🔍 金额核对结果</h3><p style="margin:4px 0 0;color:#888;font-size:13px;">' + (allOk ? '全部一致，未发现差异。' : ('共发现 ' + orderDiff.length + ' 个订单级差异、' + rowDiff.length + ' 个SKU行级差异。')) + '</p></div>';
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕ 关闭';
+    closeBtn.style.cssText = 'background:#666;color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:14px;';
+    closeBtn.onclick = function() { overlay.parentNode.removeChild(overlay); };
+    head.appendChild(closeBtn);
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.parentNode.removeChild(overlay); };
+    card.appendChild(head);
+    var body = document.createElement('div');
+    body.style.cssText = 'padding:18px 24px;overflow-y:auto;flex:1;';
+    var html = '';
+    if (allOk) {
+      html += '<div style="text-align:center;padding:48px 20px;color:#2e7d32;font-size:16px;"><div style="font-size:48px;margin-bottom:12px;">✅</div>所有订单的 Σ(数量×单价) 与 登记总金额 完全一致，无需排查。</div>';
+    } else {
+      /* 订单级差异表 */
+      if (orderDiff.length) {
+        html += '<h4 style="margin:0 0 10px;color:#c62828;">一、订单级差异（Σ数量×单价 ≠ Σ登记总金额）</h4>';
+        html += '<div class="table-wrap" style="max-height:240px;margin-bottom:24px;"><table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr style="background:#f5f5f5;">' +
+          '<th style="padding:8px 10px;text-align:left;border:1px solid #ddd;">订单号</th>' +
+          '<th style="padding:8px 10px;text-align:right;border:1px solid #ddd;">数量合计</th>' +
+          '<th style="padding:8px 10px;text-align:right;border:1px solid #ddd;">SKU行数</th>' +
+          '<th style="padding:8px 10px;text-align:right;border:1px solid #ddd;">应算总额(Σ数量×单价)</th>' +
+          '<th style="padding:8px 10px;text-align:right;border:1px solid #ddd;">登记总额</th>' +
+          '<th style="padding:8px 10px;text-align:right;border:1px solid #ddd;">差异</th>' +
+          '</tr></thead><tbody>';
+        orderDiff.forEach(function(o) {
+          var cls = o.差异 > 0 ? 'color:#2e7d32;' : 'color:#c62828;font-weight:700;';
+          html += '<tr>' +
+            '<td style="padding:8px 10px;border:1px solid #ddd;font-family:monospace;">' + esc(o.订单号) + '</td>' +
+            '<td style="padding:8px 10px;border:1px solid #ddd;text-align:right;">' + num(o.数量合计) + '</td>' +
+            '<td style="padding:8px 10px;border:1px solid #ddd;text-align:right;">' + num(o.SKU行数) + '</td>' +
+            '<td style="padding:8px 10px;border:1px solid #ddd;text-align:right;">¥' + money(o.应算总额) + '</td>' +
+            '<td style="padding:8px 10px;border:1px solid #ddd;text-align:right;">¥' + money(o.登记总额) + '</td>' +
+            '<td style="padding:8px 10px;border:1px solid #ddd;text-align:right;' + cls + '">' + (o.差异 > 0 ? '+' : '') + money(o.差异) + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table></div>';
+        html += '<p style="color:#888;font-size:12px;margin:0 0 18px;">提示：差异为正=登记金额大于应算金额（可能单价读低或总金额含税）；差异为负=登记金额小于应算金额。</p>';
+      }
+      /* 行级差异明细表 */
+      if (rowDiff.length) {
+        html += '<h4 style="margin:0 0 10px;color:#c62828;">二、SKU行级差异明细（数量×单价 ≠ 登记总金额）</h4>';
+        html += '<div class="table-wrap" style="max-height:360px;"><table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f5f5f5;">' +
+          '<th style="padding:8px 10px;text-align:left;border:1px solid #ddd;">订单号</th>' +
+          '<th style="padding:8px 10px;text-align:left;border:1px solid #ddd;">SKU编码</th>' +
+          '<th style="padding:8px 10px;text-align:left;border:1px solid #ddd;">产品名称</th>' +
+          '<th style="padding:8px 10px;text-align:right;border:1px solid #ddd;">数量</th>' +
+          '<th style="padding:8px 10px;text-align:right;border:1px solid #ddd;">单价</th>' +
+          '<th style="padding:8px 10px;text-align:right;border:1px solid #ddd;">应算(数量×单价)</th>' +
+          '<th style="padding:8px 10px;text-align:right;border:1px solid #ddd;">登记总金额</th>' +
+          '<th style="padding:8px 10px;text-align:right;border:1px solid #ddd;">差异</th>' +
+          '</tr></thead><tbody>';
+        rowDiff.forEach(function(r) {
+          var cls = r.差异 > 0 ? 'color:#2e7d32;' : 'color:#c62828;font-weight:700;';
+          html += '<tr>' +
+            '<td style="padding:6px 10px;border:1px solid #ddd;font-family:monospace;">' + esc(r.订单号) + '</td>' +
+            '<td style="padding:6px 10px;border:1px solid #ddd;font-family:monospace;">' + esc(r.SKU编码) + '</td>' +
+            '<td style="padding:6px 10px;border:1px solid #ddd;">' + esc(r.产品名称) + '</td>' +
+            '<td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">' + num(r.数量) + '</td>' +
+            '<td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">' + money(r.单价) + '</td>' +
+            '<td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">¥' + money(r.应算金额) + '</td>' +
+            '<td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">¥' + money(r.登记总金额) + '</td>' +
+            '<td style="padding:6px 10px;border:1px solid #ddd;text-align:right;' + cls + '">' + (r.差异 > 0 ? '+' : '') + money(r.差异) + '</td>' +
+            '</tr>';
+        });
+        html += '</tbody></table></div>';
+        html += '<p style="color:#888;font-size:12px;margin:8px 0 0;">排查建议：① 单价为0=上传订单表时未识别到单价列（检查原表列名）；② 差异为整数倍=可能重复上传累加；③ 差异含税差=含税/不含税口径不一致。</p>';
+      }
+    }
+    body.innerHTML = html;
+    card.appendChild(body);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
   }
   /* 暴露 state 引用，供 app.js 的顶部导出按钮读取当前预览（无需提交即可导出） */
   window.LAIKE_UPLOAD_STATE = state;

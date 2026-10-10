@@ -326,6 +326,7 @@
           <div style="color:var(--muted);font-size:13px;margin-top:4px;">导出最近一次上传的出库单：保留原表格式，B列填匹配订单号，H列填GY号；库存不足跨单时自动插入行并高亮；同时附每个SKU剩余数量表。</div>
         </div>
         <button id="exportShipFlowBtn" type="button" style="background:var(--accent-dark);color:#fff;border:none;padding:12px 28px;border-radius:999px;cursor:pointer;font-size:15px;font-weight:700;box-shadow:0 4px 12px rgba(35,139,126,0.3);">📥 导出最近出库匹配到Excel</button>
+        <button id="verifyAmountBtn" type="button" style="background:#e67e22;color:#fff;border:none;padding:12px 28px;border-radius:999px;cursor:pointer;font-size:15px;font-weight:700;box-shadow:0 4px 12px rgba(230,126,18,0.3);">🔍 金额核对</button>
       </div>
     </section>
 
@@ -421,9 +422,9 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>品类</th><th>订单号</th><th>工厂总订单</th><th>已发货数量</th><th>工厂剩余数量</th><th>剩余库存余额</th><th>SKU行数</th><th>状态</th><th>操作</th></tr>
+          <tr><th>订单号</th><th>总剩余数量</th><th>总剩余金额</th><th>操作</th></tr>
         </thead>
-        <tbody id="orderSummaryBody"><tr><td>制动液</td><td class="mono">26IBOC0339</td><td class="num">7,800</td><td class="num">6,276</td><td class="num">1,524</td><td class="num">4</td><td><span class="pill warn">部分发货</span></td></tr><tr><td>制动液</td><td class="mono">26IBOC0566</td><td class="num">17,520</td><td class="num">156</td><td class="num">17,364</td><td class="num">4</td><td><span class="pill warn">部分发货</span></td></tr><tr><td>润滑油</td><td class="mono">26IBOC0557</td><td class="num">94,663</td><td class="num">18,730</td><td class="num">75,933</td><td class="num">65</td><td><span class="pill warn">部分发货</span></td></tr><tr><td>润滑油</td><td class="mono">欧拓力备用金</td><td class="num">14</td><td class="num">13</td><td class="num">1</td><td class="num">7</td><td><span class="pill warn">部分发货</span></td></tr><tr><td>空调套装</td><td class="mono">26IBOC0362</td><td class="num">6,000</td><td class="num">6,000</td><td class="num neg">0</td><td class="num">1</td><td><span class="pill ok">全部发完</span></td></tr><tr><td>空调套装</td><td class="mono">26IBOC0436</td><td class="num">3,600</td><td class="num">3,300</td><td class="num">300</td><td class="num">1</td><td><span class="pill warn">部分发货</span></td></tr><tr><td>空调套装</td><td class="mono">26IBOC0640</td><td class="num">120</td><td class="num">120</td><td class="num neg">0</td><td class="num">1</td><td><span class="pill ok">全部发完</span></td></tr></tbody>
+        <tbody id="orderSummaryBody"><tr><td class="mono">26IBOC0339</td><td class="num">1,524</td><td class="num">¥0.00</td><td></td></tr><tr><td class="mono">26IBOC0566</td><td class="num">17,364</td><td class="num">¥0.00</td><td></td></tr><tr><td class="mono">26IBOC0557</td><td class="num">75,933</td><td class="num">¥0.00</td><td></td></tr><tr><td class="mono">欧拓力备用金</td><td class="num">1</td><td class="num">¥0.00</td><td></td></tr><tr><td class="mono">26IBOC0362</td><td class="num neg">0</td><td class="num">¥0.00</td><td></td></tr><tr><td class="mono">26IBOC0436</td><td class="num">300</td><td class="num">¥0.00</td><td></td></tr><tr><td class="mono">26IBOC0640</td><td class="num neg">0</td><td class="num">¥0.00</td><td></td></tr></tbody>
       </table>
     </div>
 
@@ -471,12 +472,12 @@
   <script>if(!window.XLSX){document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');}</script>
   <script src="assets/dashboard-data.js?v=20260905"></script>
   <script src="assets/charts.js?v=20260905"></script>
-  <script src="assets/app.js?v=20261010a"></script>
+  <script src="assets/app.js?v=20261010c"></script>
   <script src="assets/cloud-sync.js?v=20261009b"></script>
-  <script src="assets/upload.js?v=20261009c"></script>
+  <script src="assets/upload.js?v=20261010b"></script>
   <script>
     /* 版本标记：用于确认新版脚本已加载 */
-    window.LAIKE_SCRIPT_VERSION = '20261010a';
+    window.LAIKE_SCRIPT_VERSION = '20261010c';
   </script>
 
 

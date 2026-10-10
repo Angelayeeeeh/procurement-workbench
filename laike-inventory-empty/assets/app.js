@@ -303,23 +303,21 @@
 
     orderBody.innerHTML = data.orderSummary.map(function(r) {
       var remainCls = r.工厂剩余数量 <= 0 ? ' neg' : '';
-      return '<tr><td>' + esc(r.品类) + '</td><td class="mono">' + esc(r.订单号) + '</td><td class="num">' + num(r.工厂总订单) + '</td><td class="num">' + num(r.已发货数量) + '</td><td class="num' + remainCls + '">' + num(r.工厂剩余数量) + '</td><td class="num">¥' + money(r.剩余库存余额 || 0) + '</td><td class="num">' + num(r.SKU行数) + '</td><td>' + pill(r.状态) + '</td><td><button class="btn-edit-order" data-order="' + esc(r.订单号) + '" data-cat="' + esc(r.品类) + '" type="button" style="background:#e8f4fd;border:1px solid #2a6da3;color:#2a6da3;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px;margin-right:4px;">编辑</button><button class="btn-del-order" data-order="' + esc(r.订单号) + '" data-cat="' + esc(r.品类) + '" type="button" style="background:#fee;border:1px solid #c33;color:#c33;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px;">删除</button></td></tr>';
+      return '<tr><td class="mono">' + esc(r.订单号) + '</td><td class="num' + remainCls + '">' + num(r.工厂剩余数量) + '</td><td class="num">¥' + money(r.剩余库存余额 || 0) + '</td><td><button class="btn-edit-order" data-order="' + esc(r.订单号) + '" type="button" style="background:#e8f4fd;border:1px solid #2a6da3;color:#2a6da3;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px;margin-right:4px;">编辑</button><button class="btn-del-order" data-order="' + esc(r.订单号) + '" type="button" style="background:#fee;border:1px solid #c33;color:#c33;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px;">删除</button></td></tr>';
     }).join('');
     orderBody.querySelectorAll('.btn-del-order').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var orderNo = btn.getAttribute('data-order');
-        var cat = btn.getAttribute('data-cat');
         if (window.LAIKE_UPLOAD && window.LAIKE_UPLOAD.deleteOrder) {
-          window.LAIKE_UPLOAD.deleteOrder(orderNo, cat);
+          window.LAIKE_UPLOAD.deleteOrder(orderNo);
         }
       });
     });
     orderBody.querySelectorAll('.btn-edit-order').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var orderNo = btn.getAttribute('data-order');
-        var cat = btn.getAttribute('data-cat');
         if (window.LAIKE_UPLOAD && window.LAIKE_UPLOAD.editOrder) {
-          window.LAIKE_UPLOAD.editOrder(orderNo, cat);
+          window.LAIKE_UPLOAD.editOrder(orderNo);
         }
       });
     });
