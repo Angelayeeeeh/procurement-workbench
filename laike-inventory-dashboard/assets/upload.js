@@ -1646,7 +1646,99 @@
     setSaveStatus('已删除订单 ' + orderNo + '，数据已更新', 'ok');
   }
 
-  window.LAIKE_UPLOAD = { deleteOrder: deleteOrder, rebuildSummaries: rebuildSummaries };
+  window.LAIKE_UPLOAD = { deleteOrder: deleteOrder, editOrder: editOrder, rebuildSummaries: rebuildSummaries };
+
+  /* 手动编辑订单号和订单总数（修复重复上传导致数量翻倍等问题） */
+  function editOrder(orderNo, category) {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !data.rows) return;
+    var matchRows = data.rows.filter(function(r) { return r.订单号 === orderNo && r.品类 === category; });
+    if (!matchRows.length) {
+      alert('未找到订单：' + category + ' / ' + orderNo);
+      return;
+    }
+    var oldTotal = matchRows.reduce(function(s, r) { return s + Number(r.工厂总订单 || 0); }, 0);
+    var shipped = matchRows.reduce(function(s, r) { return s + Number(r.已发货数量 || 0); }, 0);
+    var skuCount = matchRows.length;
+    /* 弹出编辑框 */
+    var newOrderNo = window.prompt(
+      '【编辑订单号】\n' +
+      '品类：' + category + '\n' +
+      '当前订单号：' + orderNo + '\n' +
+      'SKU行数：' + skuCount + ' 行\n' +
+      '已发货数量：' + shipped + '\n' +
+      '当前订单总数：' + oldTotal + '\n\n' +
+      '请输入新的订单号（如不需要改，保持原样直接确定）：',
+      orderNo
+    );
+    if (newOrderNo === null) return; /* 用户取消 */
+    newOrderNo = newOrderNo.trim();
+    if (!newOrderNo) { alert('订单号不能为空'); return; }
+    var newTotalStr = window.prompt(
+      '【编辑订单总数】\n' +
+      '品类：' + category + '\n' +
+      '订单号：' + newOrderNo + '\n' +
+      'SKU行数：' + skuCount + ' 行\n' +
+      '已发货数量：' + shipped + '（不会改动）\n' +
+      '当前订单总数：' + oldTotal + '\n\n' +
+      '请输入新的订单总数（如因重复上传导致翻倍，输入正确数值即可；不需要改直接确定）：',
+      String(oldTotal)
+    );
+    if (newTotalStr === null) return; /* 用户取消 */
+    var newTotal = Number(newTotalStr.trim());
+    if (isNaN(newTotal) || newTotal < 0) { alert('订单总数必须是≥0的数字'); return; }
+    /* 没有任何改动 */
+    if (newOrderNo === orderNo && newTotal === oldTotal) {
+      alert('未做任何修改');
+      return;
+    }
+    /* 二次确认 */
+    var changes = [];
+    if (newOrderNo !== orderNo) changes.push('订单号：' + orderNo + ' → ' + newOrderNo);
+    if (newTotal !== oldTotal) changes.push('订单总数：' + oldTotal + ' → ' + newTotal);
+    if (!confirm('确认修改？\n品类：' + category + '\n' + changes.join('\n') + '\n\n（已发货数量 ' + shipped + ' 不变，工厂剩余数量会自动重算）')) return;
+    /* 备份当前数据 */
+    try {
+      var old = localStorage.getItem('laike_inventory_dashboard_saved_data_v1');
+      if (old) localStorage.setItem('laike_inventory_dashboard_backup_v1', old);
+    } catch (e) {}
+    /* 改订单号 */
+    if (newOrderNo !== orderNo) {
+      matchRows.forEach(function(r) { r.订单号 = newOrderNo; });
+    }
+    /* 改订单总数：按原比例分摊到各行；若原总和为0则平均分 */
+    if (newTotal !== oldTotal) {
+      if (oldTotal > 0) {
+        var ratio = newTotal / oldTotal;
+        var allocated = 0;
+        matchRows.forEach(function(r, i) {
+          if (i === matchRows.length - 1) {
+            r.工厂总订单 = newTotal - allocated; /* 末行兜底，避免浮点误差 */
+          } else {
+            r.工厂总订单 = Math.round(Number(r.工厂总订单 || 0) * ratio);
+            allocated += r.工厂总订单;
+          }
+        });
+      } else {
+        /* 原总和为0：平均分 */
+        var per = Math.floor(newTotal / skuCount);
+        var remainder = newTotal - per * skuCount;
+        matchRows.forEach(function(r, i) {
+          r.工厂总订单 = per + (i < remainder ? 1 : 0);
+        });
+      }
+    }
+    /* 重新计算汇总 */
+    rebuildSummaries(data);
+    /* 保存并刷新 */
+    if (window.LAIKE_STORAGE && window.LAIKE_STORAGE.save) {
+      window.LAIKE_STORAGE.save(false);
+    }
+    if (window.LAIKE_APP && window.LAIKE_APP.refresh) {
+      window.LAIKE_APP.refresh();
+    }
+    setSaveStatus('已修改订单 ' + newOrderNo + '，数据已更新', 'ok');
+  }
   /* 暴露 state 引用，供 app.js 的顶部导出按钮读取当前预览（无需提交即可导出） */
   window.LAIKE_UPLOAD_STATE = state;
 
