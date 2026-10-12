@@ -2790,6 +2790,11 @@
     var nextTotal = now.getFullYear() * 12 + now.getMonth() + 1;
     var nextYM = Math.floor(nextTotal / 12) + '-' + pad((nextTotal % 12) + 1);
     var months = [prevYM, curYM, nextYM];
+    var monthLabels = months.map(function (m) { return Number(m.split('-')[1]); });
+    var titleEl = document.getElementById('financeBoardTitle');
+    if (titleEl) titleEl.textContent = monthLabels.join('月 / ') + '月付款开票看板';
+    var descEl = document.getElementById('financeBoardDesc');
+    if (descEl) descEl.textContent = '固定查看' + monthLabels.join('月、') + '月 · 月结付款自动联动 · 临时付款可单独登记 · 采购单号必须体现';
     var scoped = state.financePayments.filter(function (p) {
       var key = monthKey(parseYMD(p.dueDate) || today());
       return months.indexOf(key) >= 0 || p.type === '采购订单待付款';

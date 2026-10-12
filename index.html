@@ -2475,8 +2475,8 @@
       <section class="section" data-section="finance">
         <div class="card">
           <div class="card-header">
-            <h3>7月 / 8月 / 9月付款开票看板</h3>
-            <span>固定查看7月、8月、9月 · 月结付款自动联动 · 临时付款可单独登记 · 采购单号必须体现</span>
+            <h3 id="financeBoardTitle">付款开票看板</h3>
+            <span id="financeBoardDesc">月结付款自动联动 · 临时付款可单独登记 · 采购单号必须体现</span>
           </div>
           <div class="card-body" id="financePaymentPanel"><div class="finance-month-card" style="margin-bottom:14px;"><h4>7月 / 8月 / 9月待付款总台</h4><div class="finance-kpis"><div class="finance-kpi danger"><span>待付款笔数</span><strong>0</strong></div><div class="finance-kpi danger"><span>待付款金额</span><strong>￥0.00</strong></div></div></div><div class="finance-month-grid"><div class="finance-month-card"><h4>2026-07</h4><div class="finance-kpis"><div class="finance-kpi danger clickable-card" data-finance-filter-month="2026-07" data-finance-filter-status="waitPay" title="点击只看2026-07待付款订单"><span>待付款</span><strong>0</strong></div><div class="finance-kpi danger"><span>待付款金额</span><strong>￥0.00</strong></div><div class="finance-kpi success clickable-card" data-finance-filter-month="2026-07" data-finance-filter-status="paid" title="点击只看2026-07已付款订单"><span>已付款</span><strong>0</strong></div><div class="finance-kpi warning clickable-card" data-finance-filter-month="2026-07" data-finance-filter-status="waitInvoice" title="点击只看2026-07待开票订单"><span>待开票</span><strong>0</strong></div><div class="finance-kpi success"><span>已开票</span><strong>0</strong></div></div></div><div class="finance-month-card"><h4>2026-08</h4><div class="finance-kpis"><div class="finance-kpi danger clickable-card" data-finance-filter-month="2026-08" data-finance-filter-status="waitPay" title="点击只看2026-08待付款订单"><span>待付款</span><strong>0</strong></div><div class="finance-kpi danger"><span>待付款金额</span><strong>￥0.00</strong></div><div class="finance-kpi success clickable-card" data-finance-filter-month="2026-08" data-finance-filter-status="paid" title="点击只看2026-08已付款订单"><span>已付款</span><strong>0</strong></div><div class="finance-kpi warning clickable-card" data-finance-filter-month="2026-08" data-finance-filter-status="waitInvoice" title="点击只看2026-08待开票订单"><span>待开票</span><strong>0</strong></div><div class="finance-kpi success"><span>已开票</span><strong>0</strong></div></div></div><div class="finance-month-card"><h4>2026-09</h4><div class="finance-kpis"><div class="finance-kpi danger clickable-card" data-finance-filter-month="2026-09" data-finance-filter-status="waitPay" title="点击只看2026-09待付款订单"><span>待付款</span><strong>0</strong></div><div class="finance-kpi danger"><span>待付款金额</span><strong>￥0.00</strong></div><div class="finance-kpi success clickable-card" data-finance-filter-month="2026-09" data-finance-filter-status="paid" title="点击只看2026-09已付款订单"><span>已付款</span><strong>0</strong></div><div class="finance-kpi warning clickable-card" data-finance-filter-month="2026-09" data-finance-filter-status="waitInvoice" title="点击只看2026-09待开票订单"><span>待开票</span><strong>0</strong></div><div class="finance-kpi success"><span>已开票</span><strong>0</strong></div></div></div></div><div class="empty">7月、8月、9月暂无付款/开票记录。月结下推到付款或添加临时付款后会自动显示。</div></div>
         </div>
@@ -3096,7 +3096,7 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="assets/procurement-supabase-config.js"></script>
-  <script src="assets/app.js?v=20261012"></script>
+  <script src="assets/app.js?v=20261012b"></script>
   <script src="assets/procurement-cloud-sync.js?v=20260806"></script>
   <script src="assets/decoration-module.js"></script>
 
