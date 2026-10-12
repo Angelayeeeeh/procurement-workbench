@@ -1626,6 +1626,14 @@
       bindFactoryInventoryActions();
       return;
     }
+    if (selectedFactory === '小松' || selectedFactory === '山东小松油品有限公司') {
+      summary.textContent = '单HTML内置库存台账；可通过“小松专属库存”进入订单出货看板。';
+      body.innerHTML =
+        localInventoryHtml +
+        '<div class="inventory-empty">后续采购单确认流转产生的入库数量，会继续显示在上方“工厂代管库存（GY号主键）”和“最近入库流水”中；小松订单出货扣减请进入“小松专属库存”。</div>';
+      bindFactoryInventoryActions();
+      return;
+    }
     summary.textContent = '显示 Excel 采购单确认流转后自动累计的工厂代管库存。';
     body.innerHTML = localInventoryHtml;
     bindFactoryInventoryActions();
@@ -1656,12 +1664,15 @@
       var laikeLink = (factory === '山东莱克科技有限公司')
         ? '<a class="btn primary" href="./laike-inventory-dashboard/laike-inventory-dashboard.html" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px;padding:6px 10px;min-height:auto;">莱克专属库存</a>'
         : '';
+      var komatsuLink = (factory === '小松' || factory === '山东小松油品有限公司')
+        ? '<a class="btn primary" href="./laike-inventory-empty/laike-inventory-dashboard.html" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px;padding:6px 10px;min-height:auto;">小松专属库存</a>'
+        : '';
       return '<div class="factory-card" data-inventory-factory-card="' + escapeHTML(factory) + '"><div><h4>' + escapeHTML(factory) + '</h4>' +
         '<p>主营：' + escapeHTML(supplier.products || '未填写') + '</p>' +
         '<p>库存型号 ' + stocks.length + ' 个 · 当前库存总数 ' + totalQty + '</p>' +
         '<p>' + escapeHTML(latest ? ('最近更新：订单 ' + (latest.orderNo || '未填') + ' / ' + shortTime(latest.createdAt)) : '暂无库存流水') + '</p>' +
         '</div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">' +
-        laikeLink +
+        laikeLink + komatsuLink +
         (stocks.length
           ? '<span style="display:inline-block;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:600;background:#2A9D8F;color:#fff;border:1px solid #2A9D8F;box-shadow:0 2px 6px rgba(42,157,143,0.25);">查看库存</span>'
           : '<span style="display:inline-block;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:500;background:#E5E7EB;color:#9CA3AF;border:1px solid #D1D5DB;">暂无库存</span>') +
