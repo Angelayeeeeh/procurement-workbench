@@ -3,7 +3,7 @@
 
   var STORAGE_KEY = 'autoPartsProcurementWorkbench.v1';
 
-  var defaultFactories = ['莱克', '纯发', '纳科达', '汇财', '和润宇', '小松'];
+  var defaultFactories = ['莱克', '纯发', '纳科达', '汇财', '和润宇', '小松', '宝捷'];
   var factories = defaultFactories.slice();
 
   /* ========== 【合同迭代新增】默认合同数据（来自合同汇总 Excel） ========== */
@@ -19,7 +19,8 @@
     { contractType: '供应商合同', factory: '宁波中炫电子科技有限公司', category: '火花塞', startDate: '2026-01-01', expiryDate: '2026-12-31' },
     { contractType: '三方合同', factory: '纳琳科新材料（南通）有限公司&郑州汇财包装有限公司', category: '汽车窗膜', startDate: '2026-05-17', expiryDate: '2027-05-16' },
     { contractType: '三方合同', factory: '海安浩驰科技有限公司&郑州汇财包装有限公司', category: '汽车窗膜', startDate: '2026-05-23', expiryDate: '2027-05-22' },
-    { contractType: '三方合同', factory: '南通纳科达聚氨酯科技有限公司', category: '隐形车衣&天窗冰甲', startDate: '2026-07-16', expiryDate: '2027-07-15' }
+    { contractType: '三方合同', factory: '南通纳科达聚氨酯科技有限公司', category: '隐形车衣&天窗冰甲', startDate: '2026-07-16', expiryDate: '2027-07-15' },
+    { contractType: '供应商合同', factory: '江苏宝捷科技股份有限公司', category: '柴机油、润滑油', startDate: '2026-01-01', expiryDate: '2026-12-31' }
   ];
   var modules = [
     { id: 'suppliers', name: '供应商管理' },
@@ -374,7 +375,8 @@
       '纳科达': '供应商合同 / 成品采购',
       '汇财': '成品采购',
       '和润宇': '成品采购',
-      '小松': '票据与采购事项'
+      '小松': '票据与采购事项',
+      '宝捷': '柴机油、润滑油'
     };
     return map[name] || '';
   }
@@ -1634,6 +1636,14 @@
       bindFactoryInventoryActions();
       return;
     }
+    if (selectedFactory === '宝捷' || selectedFactory === '江苏宝捷科技股份有限公司') {
+      summary.textContent = '单HTML内置库存台账；可通过“宝捷专属库存”进入订单出货看板。';
+      body.innerHTML =
+        localInventoryHtml +
+        '<div class="inventory-empty">后续采购单确认流转产生的入库数量，会继续显示在上方“工厂代管库存（GY号主键）”和“最近入库流水”中；宝捷订单出货扣减请进入“宝捷专属库存”。</div>';
+      bindFactoryInventoryActions();
+      return;
+    }
     summary.textContent = '显示 Excel 采购单确认流转后自动累计的工厂代管库存。';
     body.innerHTML = localInventoryHtml;
     bindFactoryInventoryActions();
@@ -1667,12 +1677,15 @@
       var komatsuLink = (factory === '小松' || factory === '山东小松油品有限公司')
         ? '<a class="btn primary" href="./laike-inventory-empty/laike-inventory-dashboard.html" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px;padding:6px 10px;min-height:auto;">小松专属库存</a>'
         : '';
+      var baojieLink = (factory === '宝捷' || factory === '江苏宝捷科技股份有限公司')
+        ? '<a class="btn primary" href="./baojie-inventory-empty/baojie-inventory-dashboard.html" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px;padding:6px 10px;min-height:auto;">宝捷专属库存</a>'
+        : '';
       return '<div class="factory-card" data-inventory-factory-card="' + escapeHTML(factory) + '"><div><h4>' + escapeHTML(factory) + '</h4>' +
         '<p>主营：' + escapeHTML(supplier.products || '未填写') + '</p>' +
         '<p>库存型号 ' + stocks.length + ' 个 · 当前库存总数 ' + totalQty + '</p>' +
         '<p>' + escapeHTML(latest ? ('最近更新：订单 ' + (latest.orderNo || '未填') + ' / ' + shortTime(latest.createdAt)) : '暂无库存流水') + '</p>' +
         '</div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">' +
-        laikeLink + komatsuLink +
+        laikeLink + komatsuLink + baojieLink +
         (stocks.length
           ? '<span style="display:inline-block;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:600;background:#2A9D8F;color:#fff;border:1px solid #2A9D8F;box-shadow:0 2px 6px rgba(42,157,143,0.25);">查看库存</span>'
           : '<span style="display:inline-block;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:500;background:#E5E7EB;color:#9CA3AF;border:1px solid #D1D5DB;">暂无库存</span>') +
