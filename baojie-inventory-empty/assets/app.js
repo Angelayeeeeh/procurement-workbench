@@ -448,6 +448,17 @@
     });
   });
 
+  var clearBtn = document.getElementById('clearAllDataBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function() {
+      if (!confirm('确定要清空所有数据吗？\n\n此操作将删除：\n• 已上传的所有订单和出库记录\n• 订单汇总、SKU 明细\n• 本地保存的库存数据\n\n清空后无法恢复（除非有备份文件），请谨慎操作。')) return;
+      if (!confirm('再次确认：真的要清空全部数据吗？\n\n如果之前导出过备份文件，可以用「导入备份文件」恢复。')) return;
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(BACKUP_KEY);
+      location.reload();
+    });
+  }
+
   window.LAIKE_APP = { refresh: refreshAll, renderDetails: renderDetails };
 
   refreshAll();
