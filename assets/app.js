@@ -2783,8 +2783,13 @@
   function renderFinancePaymentPanel() {
     var panel = $('financePaymentPanel');
     if (!panel) return;
-    var currentYear = today().getFullYear();
-    var months = [7, 8, 9].map(function (month) { return currentYear + '-' + pad(month); });
+    var now = today();
+    var prevTotal = now.getFullYear() * 12 + now.getMonth() - 1;
+    var prevYM = Math.floor(prevTotal / 12) + '-' + pad((prevTotal % 12) + 1);
+    var curYM = now.getFullYear() + '-' + pad(now.getMonth() + 1);
+    var nextTotal = now.getFullYear() * 12 + now.getMonth() + 1;
+    var nextYM = Math.floor(nextTotal / 12) + '-' + pad((nextTotal % 12) + 1);
+    var months = [prevYM, curYM, nextYM];
     var scoped = state.financePayments.filter(function (p) {
       var key = monthKey(parseYMD(p.dueDate) || today());
       return months.indexOf(key) >= 0 || p.type === '采购订单待付款';
@@ -2804,7 +2809,7 @@
       return sum + financePaymentRemainingAmount(p);
     }, 0);
     var totalCard = '<div class="finance-month-card" style="margin-bottom:14px;">' +
-      '<h4>7月 / 8月 / 9月待付款总台</h4>' +
+      '<h4>' + months.map(function(m){ return Number(m.split('-')[1]); }).join('月 / ') + '月待付款总台</h4>' +
       '<div class="finance-kpis">' +
       '<div class="finance-kpi danger"><span>待付款笔数</span><strong>' + totalWaitPay + '</strong></div>' +
       '<div class="finance-kpi danger"><span>待付款金额</span><strong>' + escapeHTML(formatCurrency(totalWaitPayAmount) || '￥0.00') + '</strong></div>' +
@@ -2829,7 +2834,7 @@
         '</div></div>';
     }).join('');
     if (!scoped.length) {
-      panel.innerHTML = totalCard + '<div class="finance-month-grid">' + cards + '</div><div class="empty">7月、8月、9月暂无付款/开票记录。月结下推到付款或添加临时付款后会自动显示。</div>';
+      panel.innerHTML = totalCard + '<div class="finance-month-grid">' + cards + '</div><div class="empty">' + months.map(function(m){ return Number(m.split('-')[1]); }).join('月、') + '月暂无付款/开票记录。月结下推到付款或添加临时付款后会自动显示。</div>';
       bindFinanceFilterCards(panel);
       return;
     }
