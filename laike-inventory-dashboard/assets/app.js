@@ -339,10 +339,41 @@
     var skuBody = document.getElementById('skuTableBody');
     var unmatchedBody = document.getElementById('unmatchedTableBody');
 
-    orderBody.innerHTML = data.orderSummary.map(function(r) {
+    /* 订单号汇总：筛选框初始化 + 过滤渲染 */
+    var catSel = document.getElementById('orderFilterCat');
+    var noInput = document.getElementById('orderFilterNo');
+    var statusSel = document.getElementById('orderFilterStatus');
+    /* 初始化品类下拉选项（仅首次） */
+    if (catSel && catSel.dataset.init !== '1') {
+      catSel.dataset.init = '1';
+      var cats = {};
+      (data.orderSummary || []).forEach(function(r) { cats[r.品类] = 1; });
+      Object.keys(cats).sort().forEach(function(c) {
+        var opt = document.createElement('option');
+        opt.value = c; opt.textContent = c;
+        catSel.appendChild(opt);
+      });
+      catSel.addEventListener('change', function() { renderSimpleTables(); });
+      statusSel.addEventListener('change', function() { renderSimpleTables(); });
+      noInput.addEventListener('input', function() { renderSimpleTables(); });
+    }
+    var fCat = catSel ? catSel.value : '';
+    var fNo = noInput ? noInput.value.trim() : '';
+    var fStatus = statusSel ? statusSel.value : '';
+    if (catSel) catSel.classList.toggle('active', !!fCat);
+    if (noInput) noInput.classList.toggle('active', !!fNo);
+    if (statusSel) statusSel.classList.toggle('active', !!fStatus);
+    var filteredOrders = (data.orderSummary || []).filter(function(r) {
+      if (fCat && r.品类 !== fCat) return false;
+      if (fNo && String(r.订单号 || '').indexOf(fNo) === -1) return false;
+      if (fStatus && r.状态 !== fStatus) return false;
+      return true;
+    });
+
+    orderBody.innerHTML = filteredOrders.length ? filteredOrders.map(function(r) {
       var remainCls = r.工厂剩余数量 <= 0 ? ' neg' : '';
       return '<tr><td>' + esc(r.品类) + '</td><td class="mono">' + esc(r.订单号) + '</td><td class="num">' + num(r.工厂总订单) + '</td><td class="num">' + num(r.已发货数量) + '</td><td class="num' + remainCls + '">' + num(r.工厂剩余数量) + '</td><td class="num">¥' + money(r.剩余库存余额 || 0) + '</td><td class="num">' + num(r.SKU行数) + '</td><td>' + pill(r.状态) + '</td><td><button class="btn-edit-order" data-order="' + esc(r.订单号) + '" data-cat="' + esc(r.品类) + '" type="button" style="background:#e8f4fd;border:1px solid #2a6da3;color:#2a6da3;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px;margin-right:4px;">编辑</button><button class="btn-del-order" data-order="' + esc(r.订单号) + '" data-cat="' + esc(r.品类) + '" type="button" style="background:#fee;border:1px solid #c33;color:#c33;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px;">删除</button></td></tr>';
-    }).join('');
+    }).join('') : '<tr><td class="empty" colspan="9">没有符合筛选条件的订单</td></tr>';
     orderBody.querySelectorAll('.btn-del-order').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var orderNo = btn.getAttribute('data-order');
