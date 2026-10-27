@@ -5866,11 +5866,11 @@
     overlay.innerHTML = '<div style="background:#fff;border-radius:12px;width:420px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.2);">' +
       '<div style="padding:16px 18px;border-bottom:1px solid var(--line);font-weight:600;">按订单号删除库存</div>' +
       '<div style="padding:18px;">' +
-      '<p style="margin-bottom:10px;">选择要删除的订单号，该订单下所有GY号库存将被清零并记录删除流水。</p>' +
+      '<p style="margin-bottom:10px;color:var(--danger);">警告：此操作会彻底删除该订单下的所有库存记录和相关流水，不保留任何痕迹，且不可恢复。</p>' +
       '<select id="deleteOrderInventorySelect" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;">' + options + '</select>' +
       '<div style="margin-top:14px;text-align:right;">' +
       '<button class="btn" id="cancelDeleteOrderInventory" style="margin-right:8px;">取消</button>' +
-      '<button class="btn danger" id="confirmDeleteOrderInventory">确认删除</button>' +
+      '<button class="btn danger" id="confirmDeleteOrderInventory">彻底删除</button>' +
       '</div></div></div>';
     document.body.appendChild(overlay);
     var close = function () { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
@@ -5881,41 +5881,31 @@
     if (confirm) confirm.addEventListener('click', function () {
       var orderNo = $('deleteOrderInventorySelect').value;
       if (!orderNo) { toast('请选择订单号'); return; }
-      var toDelete = [];
+      var deletedGys = [];
       Object.keys(state.factoryInventory[factory] || {}).forEach(function (gy) {
         var stock = state.factoryInventory[factory][gy];
-        if (stock && stock.orderNo === orderNo && Number(stock.qty || 0) > 0) {
-          toDelete.push({ gyModel: gy, productName: stock.productName || '', before: Number(stock.qty || 0) });
+        if (stock && stock.orderNo === orderNo) {
+          deletedGys.push(gy);
         }
       });
-      if (!toDelete.length) {
+      if (!deletedGys.length) {
         toast('该订单号下没有可删除的库存');
         close();
         return;
       }
-      toDelete.forEach(function (item) {
-        var stock = state.factoryInventory[factory][item.gyModel];
-        stock.qty = 0;
-        stock.updatedAt = nowISO();
-        state.factoryInventory[factory][item.gyModel] = stock;
-        state.factoryInventoryMovements.unshift({
-          id: makeId(), type: '订单库存删除', factory: factory, gyModel: item.gyModel,
-          productName: item.productName || '', qty: -item.before, unitPrice: 0, lineAmount: 0,
-          orderNo: orderNo, orderDate: '', recordId: '', sourceFile: '', sourceRow: '',
-          createdAt: nowISO(), note: '按订单号删除库存，删除前库存：' + item.before
-        });
+      deletedGys.forEach(function (gy) {
+        delete state.factoryInventory[factory][gy];
       });
-      state.operationLogs = state.operationLogs || [];
-      state.operationLogs.unshift({
-        time: nowISO(), action: '按订单号删除库存',
-        detail: factory + ' / 订单号 ' + orderNo + ' / 删除 ' + toDelete.length + ' 个GY型号',
-        factory: factory
+      state.factoryInventoryMovements = (state.factoryInventoryMovements || []).filter(function (m) {
+        return !(m.factory === factory && m.orderNo === orderNo);
       });
-      state.operationLogs = state.operationLogs.slice(0, 300);
+      state.operationLogs = (state.operationLogs || []).filter(function (log) {
+        return !(log.factory === factory && log.detail && log.detail.indexOf(orderNo) >= 0);
+      });
       saveState();
       close();
       renderFactoryInventoryPanel();
-      toast('已删除订单 ' + orderNo + ' 下 ' + toDelete.length + ' 个GY型号的库存');
+      toast('已彻底删除订单 ' + orderNo + ' 下的 ' + deletedGys.length + ' 个GY型号及全部流水');
     });
   }
 
