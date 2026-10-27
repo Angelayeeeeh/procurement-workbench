@@ -2157,7 +2157,9 @@
       '<button class="btn" id="backInventoryDirectoryBtn" type="button">返回工厂库存首页</button>' +
       laikeDedicatedLink +
       '<button class="btn primary" id="deductCurrentOrderInventoryBtn" type="button"' + (currentOrderNo ? '' : ' disabled') + '>按当前订单一键扣减库存' + (currentOrderNo ? '（' + escapeHTML(currentOrderNo) + '）' : '') + '</button>' +
-      '<button class="btn primary" id="exportFactoryInventoryBtn" type="button">导出库存备份</button></div>' +
+      '<button class="btn danger" id="deleteOrderInventoryBtn" type="button">按订单号删除库存</button>' +
+      '<button class="btn primary" id="exportFactoryInventoryBtn" type="button">导出库存备份</button>' +
+      '<button class="btn primary" id="exportFactoryRemainingInventoryBtn" type="button">导出剩余库存明细</button></div>' +
       (stockRows ? '<div class="table-wrap"><table><thead><tr><th>订单号</th><th>GY号</th><th>品名</th><th>库存数量</th><th>最后更新时间</th><th>手动扣减</th></tr></thead><tbody>' + stockRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无 Excel 采购单入库库存。确认 Excel 采购单后会按 GY 号自动累加。</div>') +
       '<h4 style="margin:14px 0 8px;">最近入库流水</h4>' +
       (movementRows ? '<div class="table-wrap"><table><thead><tr><th>时间</th><th>来源订单号</th><th>GY号</th><th>品名</th><th>数量变动</th><th>来源文件</th></tr></thead><tbody>' + movementRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无入库流水。</div>') +
@@ -2174,6 +2176,10 @@
     });
     var orderBtn = $('deductCurrentOrderInventoryBtn');
     if (orderBtn) orderBtn.addEventListener('click', deductCurrentOrderInventory);
+    var deleteOrderBtn = $('deleteOrderInventoryBtn');
+    if (deleteOrderBtn) deleteOrderBtn.addEventListener('click', deleteOrderInventory);
+    var exportRemainingBtn = $('exportFactoryRemainingInventoryBtn');
+    if (exportRemainingBtn) exportRemainingBtn.addEventListener('click', exportFactoryRemainingInventory);
     var body = $('factoryInventoryBody');
     if (!body) return;
     body.querySelectorAll('[data-inventory-deduct-btn]').forEach(function (btn) {
@@ -5829,6 +5835,131 @@
       toast('已扣减 ' + gyModel + ' 库存 ' + actual);
     }
     return true;
+  }
+
+  function getOrderNoOptionsForFactory(factory) {
+    var orderNos = {};
+    (state.factoryInventoryMovements || []).forEach(function (m) {
+      if (m.factory === factory && m.orderNo) orderNos[m.orderNo] = true;
+    });
+    Object.keys(state.factoryInventory[factory] || {}).forEach(function (gy) {
+      var stock = state.factoryInventory[factory][gy];
+      if (stock && stock.orderNo) orderNos[stock.orderNo] = true;
+    });
+    return Object.keys(orderNos).sort();
+  }
+
+  function deleteOrderInventory() {
+    var factory = selectedFactory || '';
+    if (!factory) { toast('请先选择工厂'); return; }
+    var orderNos = getOrderNoOptionsForFactory(factory);
+    if (!orderNos.length) {
+      toast('当前工厂没有可删除的订单库存');
+      return;
+    }
+    var options = orderNos.map(function (no, i) {
+      return '<option value="' + escapeHTML(no) + '"' + (i === 0 ? ' selected' : '') + '>' + escapeHTML(no) + '</option>';
+    }).join('');
+    var overlay = document.createElement('div');
+    overlay.id = 'deleteOrderInventoryModal';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:10000;';
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;width:420px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,0.2);">' +
+      '<div style="padding:16px 18px;border-bottom:1px solid var(--line);font-weight:600;">按订单号删除库存</div>' +
+      '<div style="padding:18px;">' +
+      '<p style="margin-bottom:10px;">选择要删除的订单号，该订单下所有GY号库存将被清零并记录删除流水。</p>' +
+      '<select id="deleteOrderInventorySelect" style="width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;">' + options + '</select>' +
+      '<div style="margin-top:14px;text-align:right;">' +
+      '<button class="btn" id="cancelDeleteOrderInventory" style="margin-right:8px;">取消</button>' +
+      '<button class="btn danger" id="confirmDeleteOrderInventory">确认删除</button>' +
+      '</div></div></div>';
+    document.body.appendChild(overlay);
+    var close = function () { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+    var cancel = $('cancelDeleteOrderInventory');
+    var confirm = $('confirmDeleteOrderInventory');
+    if (cancel) cancel.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    if (confirm) confirm.addEventListener('click', function () {
+      var orderNo = $('deleteOrderInventorySelect').value;
+      if (!orderNo) { toast('请选择订单号'); return; }
+      var toDelete = [];
+      Object.keys(state.factoryInventory[factory] || {}).forEach(function (gy) {
+        var stock = state.factoryInventory[factory][gy];
+        if (stock && stock.orderNo === orderNo && Number(stock.qty || 0) > 0) {
+          toDelete.push({ gyModel: gy, productName: stock.productName || '', before: Number(stock.qty || 0) });
+        }
+      });
+      if (!toDelete.length) {
+        toast('该订单号下没有可删除的库存');
+        close();
+        return;
+      }
+      toDelete.forEach(function (item) {
+        var stock = state.factoryInventory[factory][item.gyModel];
+        stock.qty = 0;
+        stock.updatedAt = nowISO();
+        state.factoryInventory[factory][item.gyModel] = stock;
+        state.factoryInventoryMovements.unshift({
+          id: makeId(), type: '订单库存删除', factory: factory, gyModel: item.gyModel,
+          productName: item.productName || '', qty: -item.before, unitPrice: 0, lineAmount: 0,
+          orderNo: orderNo, orderDate: '', recordId: '', sourceFile: '', sourceRow: '',
+          createdAt: nowISO(), note: '按订单号删除库存，删除前库存：' + item.before
+        });
+      });
+      state.operationLogs = state.operationLogs || [];
+      state.operationLogs.unshift({
+        time: nowISO(), action: '按订单号删除库存',
+        detail: factory + ' / 订单号 ' + orderNo + ' / 删除 ' + toDelete.length + ' 个GY型号',
+        factory: factory
+      });
+      state.operationLogs = state.operationLogs.slice(0, 300);
+      saveState();
+      close();
+      renderFactoryInventoryPanel();
+      toast('已删除订单 ' + orderNo + ' 下 ' + toDelete.length + ' 个GY型号的库存');
+    });
+  }
+
+  function exportFactoryRemainingInventory() {
+    var factory = selectedFactory || '';
+    var inventory = state.factoryInventory || {};
+    var rows = [];
+    Object.keys(inventory).forEach(function (factoryName) {
+      if (factory && factoryName !== factory) return;
+      Object.keys(inventory[factoryName] || {}).forEach(function (gy) {
+        var item = inventory[factoryName][gy];
+        if (!item || Number(item.qty || 0) <= 0) return;
+        rows.push({
+          工厂: factoryName,
+          订单号: item.orderNo || '',
+          GY型号: item.gyModel || gy,
+          品名: item.productName || '',
+          库存数量: Number(item.qty || 0),
+          最后更新时间: item.updatedAt ? shortTime(item.updatedAt) : ''
+        });
+      });
+    });
+    if (!rows.length) {
+      toast('当前工厂暂无剩余库存可导出');
+      return;
+    }
+    rows.sort(function (a, b) {
+      return String(a.订单号).localeCompare(String(b.订单号)) || String(a.GY型号).localeCompare(String(b.GY型号));
+    });
+    var fileName = (factory || '全部工厂') + '-剩余库存明细-' + toYMD(today()) + '.xlsx';
+    if (window.XLSX) {
+      var book = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), '剩余库存明细');
+      XLSX.writeFile(book, fileName);
+      toast('已导出剩余库存明细 Excel');
+      return;
+    }
+    var blob = new Blob(['\ufeff' + objectRowsToCsv(rows)], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName.replace(/\.xlsx$/, '.csv');
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Excel 库未加载，已导出剩余库存明细 CSV');
   }
 
   function upsertPurchaseOrderPayment(group, record, amount, fileName) {
