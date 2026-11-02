@@ -2140,6 +2140,7 @@
     }).join('');
     var movementRows = movements.map(function (m) {
       var moveQty = Number(m.qty || 0);
+      var canUndo = moveQty < 0 && /扣减/.test(String(m.type || ''));
       return '<tr>' +
         '<td>' + escapeHTML(shortTime(m.createdAt)) + '</td>' +
         '<td>' + escapeHTML(m.orderNo || '') + '</td>' +
@@ -2147,6 +2148,7 @@
         '<td>' + escapeHTML(m.productName || '') + '</td>' +
         '<td>' + escapeHTML((moveQty > 0 ? '+' : '') + moveQty) + '</td>' +
         '<td>' + escapeHTML(m.sourceFile || '') + '</td>' +
+        '<td>' + (canUndo ? '<button class="btn" data-undo-deduction="' + escapeHTML(m.id) + '" type="button" style="padding:4px 10px;">撤回扣减</button>' : '') + '</td>' +
         '</tr>';
     }).join('');
     return uploadZoneHtml + '<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:14px;">' +
@@ -2162,7 +2164,7 @@
       '<button class="btn primary" id="exportFactoryRemainingInventoryBtn" type="button">导出剩余库存明细</button></div>' +
       (stockRows ? '<div class="table-wrap"><table><thead><tr><th>订单号</th><th>GY号</th><th>品名</th><th>库存数量</th><th>最后更新时间</th><th>手动扣减</th></tr></thead><tbody>' + stockRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无 Excel 采购单入库库存。确认 Excel 采购单后会按 GY 号自动累加。</div>') +
       '<h4 style="margin:14px 0 8px;">最近入库流水</h4>' +
-      (movementRows ? '<div class="table-wrap"><table><thead><tr><th>时间</th><th>来源订单号</th><th>GY号</th><th>品名</th><th>数量变动</th><th>来源文件</th></tr></thead><tbody>' + movementRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无入库流水。</div>') +
+      (movementRows ? '<div class="table-wrap"><table><thead><tr><th>时间</th><th>来源订单号</th><th>GY号</th><th>品名</th><th>数量变动</th><th>来源文件</th><th>操作</th></tr></thead><tbody>' + movementRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无入库流水。</div>') +
       '</div></div>';
   }
 
@@ -2188,6 +2190,12 @@
         var input = body.querySelector('[data-inventory-deduct-gy="' + gy.replace(/"/g, '\\"') + '"]');
         var qty = input ? parseNumberLike(input.value) : 0;
         deductFactoryInventoryItem(selectedFactory, gy, qty, '手动扣减', '');
+      });
+    });
+    body.querySelectorAll('[data-undo-deduction]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-undo-deduction') || '';
+        undoInventoryDeduction(id);
       });
     });
     var dropZone = $('factoryInventoryDropZone');
@@ -5835,6 +5843,63 @@
       toast('已扣减 ' + gyModel + ' 库存 ' + actual);
     }
     return true;
+  }
+
+  function undoInventoryDeduction(movementId) {
+    if (!movementId) { toast('未找到该扣减记录'); return; }
+    var movement = (state.factoryInventoryMovements || []).filter(function (m) { return m.id === movementId; })[0];
+    if (!movement) { toast('该扣减记录不存在或已被撤回'); return; }
+    var moveQty = Number(movement.qty || 0);
+    if (moveQty >= 0 || !/扣减/.test(String(movement.type || ''))) {
+      toast('该记录不是扣减记录，无法撤回');
+      return;
+    }
+    var factory = movement.factory;
+    var gy = movement.gyModel;
+    var restoreQty = -moveQty;
+    state.factoryInventory = state.factoryInventory && typeof state.factoryInventory === 'object' ? state.factoryInventory : {};
+    if (!state.factoryInventory[factory]) state.factoryInventory[factory] = {};
+    var stock = state.factoryInventory[factory][gy];
+    if (!stock) {
+      stock = { factory: factory, gyModel: gy, productName: movement.productName || '', qty: 0, orderNo: movement.orderNo || '', createdAt: nowISO(), updatedAt: nowISO() };
+    }
+    var before = Number(stock.qty || 0);
+    stock.qty = before + restoreQty;
+    stock.productName = stock.productName || movement.productName || '';
+    stock.orderNo = stock.orderNo || movement.orderNo || '';
+    stock.updatedAt = nowISO();
+    state.factoryInventory[factory][gy] = stock;
+    // 移除原扣减流水，避免重复撤回
+    state.factoryInventoryMovements = (state.factoryInventoryMovements || []).filter(function (m) { return m.id !== movementId; });
+    // 追加一条撤回记录，便于追溯
+    state.factoryInventoryMovements.unshift({
+      id: makeId(),
+      type: '撤回扣减',
+      factory: factory,
+      gyModel: gy,
+      productName: movement.productName || stock.productName || '',
+      qty: restoreQty,
+      unitPrice: 0,
+      lineAmount: 0,
+      orderNo: movement.orderNo || '',
+      orderDate: '',
+      recordId: '',
+      sourceFile: '',
+      sourceRow: '',
+      createdAt: nowISO(),
+      note: '撤回扣减，原扣减时间：' + shortTime(movement.createdAt) + '，撤回数量：' + restoreQty + '，撤回后库存：' + stock.qty
+    });
+    state.operationLogs = state.operationLogs || [];
+    state.operationLogs.unshift({
+      time: nowISO(),
+      action: '撤回库存扣减',
+      detail: factory + ' / GY号 ' + gy + ' / 撤回数量 ' + restoreQty + ' / ' + before + ' → ' + stock.qty + (movement.orderNo ? ' / 订单 ' + movement.orderNo : ''),
+      factory: factory
+    });
+    state.operationLogs = state.operationLogs.slice(0, 300);
+    saveState();
+    renderFactoryInventoryPanel();
+    toast('已撤回 ' + gy + ' 扣减，库存恢复 ' + restoreQty + '（现库存 ' + stock.qty + '）');
   }
 
   function getOrderNoOptionsForFactory(factory) {
