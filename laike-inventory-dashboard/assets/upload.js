@@ -1093,15 +1093,20 @@
     var orderMap = {};
     data.rows.forEach(function(r) {
       var key = r.品类 + '|' + r.订单号;
-      if (!orderMap[key]) orderMap[key] = { 品类: r.品类, 订单号: r.订单号, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 剩余库存余额: 0, SKU行数: 0, 状态: '' };
+      if (!orderMap[key]) orderMap[key] = { 品类: r.品类, 订单号: r.订单号, 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 剩余库存余额: 0, 订单总金额: 0, 出库金额: 0, SKU行数: 0, 状态: '' };
       var o = orderMap[key];
       o.工厂总订单 += r.工厂总订单;
       o.已发货数量 += r.已发货数量;
       o.工厂剩余数量 += r.工厂剩余数量;
       o.剩余库存余额 += r.剩余库存余额;
+      o.订单总金额 += Number(r.总金额 || 0);
+      var rowPrice = Number(r.单价 || 0);
+      if (!rowPrice && r.工厂总订单 > 0) rowPrice = Number(r.总金额 || 0) / r.工厂总订单;
+      o.出库金额 += Number(r.已发货数量 || 0) * rowPrice;
       o.SKU行数++;
     });
     Object.values(orderMap).forEach(function(o) {
+      o.平均单价 = o.工厂总订单 > 0 ? o.订单总金额 / o.工厂总订单 : 0;
       if (o.已发货数量 <= 0) o.状态 = '待发货';
       else if (o.工厂剩余数量 <= 0) o.状态 = '全部发完';
       else o.状态 = '部分发货';

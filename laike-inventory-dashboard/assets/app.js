@@ -414,6 +414,7 @@
     renderDetails();
     renderSimpleTables();
     bindExportShipFlow();
+    bindExportOrderSummary();
     if (window.LAIKE_CHARTS && window.LAIKE_CHARTS.refresh) {
       window.LAIKE_CHARTS.refresh();
     }
@@ -468,6 +469,67 @@
       /* 全部为空 */
       alert('暂无可导出的匹配结果（脚本版本: ' + ver + '）。\n\n可能原因：\n1. 浏览器缓存了旧版脚本——请强制刷新（Ctrl+Shift+R / Mac: Cmd+Shift+R）或用无痕窗口打开\n2. 提交扣减时本地存储已满导致匹配记录未保存\n3. 尚未上传过出货表\n\n如刚提交过扣减，请先强制刷新页面再点此按钮。');
     };
+  }
+
+  function bindExportOrderSummary() {
+    var btn = document.getElementById('exportOrderSummaryBtn');
+    if (!btn) return;
+    btn.onclick = exportOrderSummaryToExcel;
+  }
+
+  function exportOrderSummaryToExcel() {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !(data.orderSummary || []).length) {
+      alert('暂无订单汇总数据，请先上传订单表');
+      return;
+    }
+    if (!window.XLSX) {
+      alert('Excel 库未加载，请强制刷新页面后重试');
+      return;
+    }
+    var header = ['品类', '订单号', '总订单数量', '总出库数量', '剩余数量', '平均单价', '订单总金额', '出库金额', '剩余库存金额', 'SKU行数', '状态'];
+    var rows = [header];
+    var grand = { 工厂总订单: 0, 已发货数量: 0, 工厂剩余数量: 0, 订单总金额: 0, 出库金额: 0, 剩余库存余额: 0 };
+    data.orderSummary.forEach(function(o) {
+      grand.工厂总订单 += Number(o.工厂总订单 || 0);
+      grand.已发货数量 += Number(o.已发货数量 || 0);
+      grand.工厂剩余数量 += Number(o.工厂剩余数量 || 0);
+      grand.订单总金额 += Number(o.订单总金额 || 0);
+      grand.出库金额 += Number(o.出库金额 || 0);
+      grand.剩余库存余额 += Number(o.剩余库存余额 || 0);
+      rows.push([
+        o.品类 || '', o.订单号 || '',
+        Number(o.工厂总订单 || 0), Number(o.已发货数量 || 0), Number(o.工厂剩余数量 || 0),
+        Number(o.平均单价 || 0), Number(o.订单总金额 || 0), Number(o.出库金额 || 0), Number(o.剩余库存余额 || 0),
+        Number(o.SKU行数 || 0), o.状态 || ''
+      ]);
+    });
+    rows.push(['合计', '', grand.工厂总订单, grand.已发货数量, grand.工厂剩余数量, '', grand.订单总金额, grand.出库金额, grand.剩余库存余额, '', '']);
+    var ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 8 }, { wch: 10 }];
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '订单号汇总');
+    /* 第二张明细 sheet */
+    var detailHeader = ['品类', '订单号', 'SKU编码', '产品名称', '单位', '总订单数量', '已发货数量', '剩余数量', '单价', '订单总金额', '出库金额', '剩余库存金额', '状态'];
+    var detailRows = [detailHeader];
+    data.rows.forEach(function(r) {
+      var rowPrice = Number(r.单价 || 0);
+      var rowTotalAmt = Number(r.总金额 || 0);
+      if (!rowTotalAmt && r.工厂总订单 > 0) rowTotalAmt = rowPrice * Number(r.工厂总订单 || 0);
+      var rowShipAmt = Number(r.已发货数量 || 0) * rowPrice;
+      detailRows.push([
+        r.品类 || '', r.订单号 || '', r.SKU编码 || '', r.产品名称 || r.品名 || '', r.单位 || '',
+        Number(r.工厂总订单 || 0), Number(r.已发货数量 || 0), Number(r.工厂剩余数量 || 0),
+        rowPrice, rowTotalAmt, rowShipAmt, Number(r.剩余库存余额 || 0), r.状态 || ''
+      ]);
+    });
+    var ds = XLSX.utils.aoa_to_sheet(detailRows);
+    ds['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 36 }, { wch: 6 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(wb, ds, 'SKU明细');
+    var today = new Date();
+    var pad = function(n){return n<10?'0'+n:n;};
+    var fname = '莱克订单汇总_' + today.getFullYear() + pad(today.getMonth()+1) + pad(today.getDate()) + '.xlsx';
+    XLSX.writeFile(wb, fname);
   }
 
   /* 兜底导出：从出货流水记录重建匹配表（无原表格式，但含全部匹配到的订单号） */
