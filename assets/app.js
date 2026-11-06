@@ -2252,7 +2252,8 @@
       '<button class="btn primary" id="deductCurrentOrderInventoryBtn" type="button"' + (currentOrderNo ? '' : ' disabled') + '>按当前订单一键扣减库存' + (currentOrderNo ? '（' + escapeHTML(currentOrderNo) + '）' : '') + '</button>' +
       '<button class="btn danger" id="deleteOrderInventoryBtn" type="button">按订单号删除库存</button>' +
       '<button class="btn primary" id="exportFactoryInventoryBtn" type="button">导出库存备份</button>' +
-      '<button class="btn primary" id="exportFactoryRemainingInventoryBtn" type="button">导出剩余库存明细</button></div>' +
+      '<button class="btn primary" id="exportFactoryRemainingInventoryBtn" type="button">导出剩余库存明细</button>' +
+      '<button class="btn primary" id="exportDeductionDetailBtn" type="button">导出扣减明细</button></div>' +
       (stockRows ? '<div class="table-wrap"><table><thead><tr><th>订单号</th><th>GY号</th><th>品名</th><th>库存数量</th><th>最后更新时间</th><th>手动扣减</th></tr></thead><tbody>' + stockRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无 Excel 采购单入库库存。确认 Excel 采购单后会按 GY 号自动累加。</div>') +
       '<h4 style="margin:16px 0 8px;">扣减明细（全部，最早 → 最新）</h4>' +
       '<div style="color:var(--muted);font-size:12px;margin-bottom:8px;">共 ' + deductionMovements.length + ' 条扣减记录，其中 ' + doneOrderCount + ' 个订单已全部出完。</div>' +
@@ -2276,6 +2277,8 @@
     if (deleteOrderBtn) deleteOrderBtn.addEventListener('click', deleteOrderInventory);
     var exportRemainingBtn = $('exportFactoryRemainingInventoryBtn');
     if (exportRemainingBtn) exportRemainingBtn.addEventListener('click', exportFactoryRemainingInventory);
+    var exportDeductionBtn = $('exportDeductionDetailBtn');
+    if (exportDeductionBtn) exportDeductionBtn.addEventListener('click', exportDeductionDetail);
     var body = $('factoryInventoryBody');
     if (!body) return;
     body.querySelectorAll('[data-inventory-deduct-btn]').forEach(function (btn) {
@@ -6066,6 +6069,59 @@
       renderFactoryInventoryPanel();
       toast('已彻底删除订单 ' + orderNo + ' 下的 ' + deletedGys.length + ' 个GY型号及全部流水');
     });
+  }
+
+  function exportDeductionDetail() {
+    var factoryKey = inventoryDataKey(selectedFactory || '');
+    if (!factoryKey) { toast('请先选择工厂'); return; }
+    var allMovements = (state.factoryInventoryMovements || []).filter(function (m) { return m.factory === factoryKey; });
+    var orderTotals = {};
+    allMovements.forEach(function (m) {
+      var no = String(m.orderNo || '');
+      if (!no) return;
+      if (!orderTotals[no]) orderTotals[no] = { inQty: 0, outQty: 0 };
+      var q = Number(m.qty || 0);
+      if (q > 0) orderTotals[no].inQty += q;
+      else if (q < 0) orderTotals[no].outQty += -q;
+    });
+    var deductions = allMovements.filter(function (m) {
+      return Number(m.qty || 0) < 0 && /扣减/.test(String(m.type || ''));
+    }).sort(function (a, b) {
+      return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+    });
+    if (!deductions.length) { toast('当前工厂暂无扣减记录'); return; }
+    var displayName = inventoryDisplayName(selectedFactory || '');
+    var rows = [];
+    deductions.forEach(function (m) {
+      var no = String(m.orderNo || '');
+      var t = orderTotals[no];
+      var isDone = !!(t && t.inQty > 0 && t.outQty >= t.inQty);
+      rows.push({
+        工厂: displayName,
+        时间: shortTime(m.createdAt),
+        订单号: no,
+        GY号: m.gyModel || '',
+        品名: m.productName || '',
+        扣减数量: Number(m.qty || 0),
+        扣减方式: m.type || '',
+        备注: isDone ? '已出完' : ''
+      });
+    });
+    var fileName = displayName + '-扣减明细-' + toYMD(today()) + '.xlsx';
+    if (window.XLSX) {
+      var book = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), '扣减明细');
+      XLSX.writeFile(book, fileName);
+      toast('已导出扣减明细 Excel，共 ' + rows.length + ' 条');
+      return;
+    }
+    var blob = new Blob(['\ufeff' + objectRowsToCsv(rows)], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName.replace(/\.xlsx$/, '.csv');
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast('Excel 库未加载，已导出扣减明细 CSV');
   }
 
   function exportFactoryRemainingInventory() {
