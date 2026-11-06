@@ -2206,6 +2206,42 @@
         '<td>' + (canUndo ? '<button class="btn" data-undo-deduction="' + escapeHTML(m.id) + '" type="button" style="padding:4px 10px;">撤回扣减</button>' : '') + '</td>' +
         '</tr>';
     }).join('');
+
+    /* 扣减明细：全部扣减记录（最早→最新），并标注订单是否已出完 */
+    var allFactoryMovements = (state.factoryInventoryMovements || []).filter(function (m) { return m.factory === invKey; });
+    var orderTotals = {};
+    allFactoryMovements.forEach(function (m) {
+      var no = String(m.orderNo || '');
+      if (!no) return;
+      if (!orderTotals[no]) orderTotals[no] = { inQty: 0, outQty: 0 };
+      var q = Number(m.qty || 0);
+      if (q > 0) orderTotals[no].inQty += q;
+      else if (q < 0) orderTotals[no].outQty += -q;
+    });
+    var deductionMovements = allFactoryMovements.filter(function (m) {
+      return Number(m.qty || 0) < 0 && /扣减/.test(String(m.type || ''));
+    }).sort(function (a, b) {
+      return String(a.createdAt || '').localeCompare(String(b.createdAt || ''));
+    });
+    var doneOrderCount = 0;
+    Object.keys(orderTotals).forEach(function (no) {
+      var t = orderTotals[no];
+      if (t.inQty > 0 && t.outQty >= t.inQty) doneOrderCount++;
+    });
+    var deductionRows = deductionMovements.map(function (m) {
+      var no = String(m.orderNo || '');
+      var t = orderTotals[no];
+      var isDone = !!(t && t.inQty > 0 && t.outQty >= t.inQty);
+      return '<tr>' +
+        '<td>' + escapeHTML(shortTime(m.createdAt)) + '</td>' +
+        '<td>' + escapeHTML(no) + '</td>' +
+        '<td>' + escapeHTML(m.gyModel || '') + '</td>' +
+        '<td>' + escapeHTML(m.productName || '') + '</td>' +
+        '<td>' + escapeHTML(String(Number(m.qty || 0))) + '</td>' +
+        '<td>' + (isDone ? '<span class="status done">已出完</span>' : '') + '</td>' +
+        '</tr>';
+    }).join('');
+
     return uploadZoneHtml + '<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-bottom:14px;">' +
       '<div class="card-header"><h3>工厂代管库存（GY号主键）</h3><span>当前型号 ' + stocks.length + ' 个，库存总数 ' + totalQty + '</span></div>' +
       '<div class="card-body">' +
@@ -2218,6 +2254,9 @@
       '<button class="btn primary" id="exportFactoryInventoryBtn" type="button">导出库存备份</button>' +
       '<button class="btn primary" id="exportFactoryRemainingInventoryBtn" type="button">导出剩余库存明细</button></div>' +
       (stockRows ? '<div class="table-wrap"><table><thead><tr><th>订单号</th><th>GY号</th><th>品名</th><th>库存数量</th><th>最后更新时间</th><th>手动扣减</th></tr></thead><tbody>' + stockRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无 Excel 采购单入库库存。确认 Excel 采购单后会按 GY 号自动累加。</div>') +
+      '<h4 style="margin:16px 0 8px;">扣减明细（全部，最早 → 最新）</h4>' +
+      '<div style="color:var(--muted);font-size:12px;margin-bottom:8px;">共 ' + deductionMovements.length + ' 条扣减记录，其中 ' + doneOrderCount + ' 个订单已全部出完。</div>' +
+      (deductionRows ? '<div class="table-wrap"><table><thead><tr><th>时间</th><th>订单号</th><th>GY号</th><th>品名</th><th>扣减数量</th><th>备注</th></tr></thead><tbody>' + deductionRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无扣减记录。</div>') +
       '<h4 style="margin:14px 0 8px;">最近入库流水</h4>' +
       (movementRows ? '<div class="table-wrap"><table><thead><tr><th>时间</th><th>来源订单号</th><th>GY号</th><th>品名</th><th>数量变动</th><th>来源文件</th><th>操作</th></tr></thead><tbody>' + movementRows + '</tbody></table></div>' : '<div class="inventory-empty">暂无入库流水。</div>') +
       '</div></div>';
