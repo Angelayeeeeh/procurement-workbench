@@ -384,6 +384,7 @@
   function ensureStateShape() {
     state.records = Array.isArray(state.records) ? state.records : [];
     state.suppliers = Array.isArray(state.suppliers) ? state.suppliers : [];
+    state.inventoryAliases = state.inventoryAliases && typeof state.inventoryAliases === 'object' ? state.inventoryAliases : {};
     state.antifakeStock = state.antifakeStock && typeof state.antifakeStock === 'object' ? state.antifakeStock : {};
     state.antifakeMovements = Array.isArray(state.antifakeMovements) ? state.antifakeMovements : [];
     state.settlementFlows = Array.isArray(state.settlementFlows) ? state.settlementFlows : [];
@@ -1606,6 +1607,51 @@
     renderFactoryFollowTable(records);
   }
 
+  function inventoryAliasesMap() {
+    return (state && state.inventoryAliases && typeof state.inventoryAliases === 'object') ? state.inventoryAliases : {};
+  }
+  function inventoryDisplayName(name) {
+    var aliases = inventoryAliasesMap();
+    return aliases[name] || name;
+  }
+  function inventoryDataKey(name) {
+    var aliases = inventoryAliasesMap();
+    return aliases[name] || name;
+  }
+  function renameInventoryDisplay(supplierName) {
+    if (!supplierName) return;
+    var current = inventoryDisplayName(supplierName);
+    var input = window.prompt('输入新的库存抬头名称（仅影响「工厂库存管理」显示与库存数据，财务、记录、合同均不变）', current);
+    if (input === null) return;
+    var newName = String(input).trim();
+    if (!newName || newName === current) return;
+    applyInventoryAlias(supplierName, newName);
+  }
+  function applyInventoryAlias(supplierName, displayName) {
+    state.inventoryAliases = state.inventoryAliases && typeof state.inventoryAliases === 'object' ? state.inventoryAliases : {};
+    var prevKey = state.inventoryAliases[supplierName] || supplierName;
+    state.inventoryAliases[supplierName] = displayName;
+    state.factoryInventory = state.factoryInventory && typeof state.factoryInventory === 'object' ? state.factoryInventory : {};
+    var src = state.factoryInventory[prevKey];
+    if (src && prevKey !== displayName) {
+      if (!state.factoryInventory[displayName]) state.factoryInventory[displayName] = {};
+      Object.keys(src).forEach(function (gy) {
+        var target = state.factoryInventory[displayName][gy];
+        if (!target) {
+          state.factoryInventory[displayName][gy] = src[gy];
+        } else {
+          target.qty = Number(target.qty || 0) + Number(src[gy].qty || 0);
+          target.updatedAt = nowISO();
+        }
+      });
+      delete state.factoryInventory[prevKey];
+    }
+    (state.factoryInventoryMovements || []).forEach(function (m) { if (m.factory === prevKey) m.factory = displayName; });
+    saveState();
+    renderAll();
+    toast('库存抬头已改为「' + displayName + '」，原库存已合并到该抬头，财务/记录/合同未改动');
+  }
+
   function renderFactoryInventoryPanel() {
     var title = $('factoryInventoryTitle');
     var summary = $('factoryInventorySummary');
@@ -1618,7 +1664,7 @@
       bindInventoryFactoryDirectory();
       return;
     }
-    title.textContent = selectedFactory + '・工厂库存管理';
+    title.textContent = inventoryDisplayName(selectedFactory) + '・工厂库存管理';
     var localInventoryHtml = renderFactoryManagedInventoryHTML(selectedFactory);
     if (selectedFactory === '莱克' || selectedFactory === '山东莱克科技有限公司') {
       summary.textContent = '单HTML内置库存台账；可通过“莱克专属库存”进入订单出货看板。';
@@ -1668,7 +1714,8 @@
     });
     var cards = visibleSuppliers.map(function (supplier) {
       var factory = supplier.name;
-      var stocks = factoryInventoryStockRows(factory);
+      var displayName = inventoryDisplayName(factory);
+      var stocks = factoryInventoryStockRows(inventoryDataKey(factory));
       var totalQty = stocks.reduce(function (sum, item) { return sum + Number(item.库存数量 || 0); }, 0);
       var latest = factoryLatestInventoryMovement(factory);
       var laikeLink = (factory === '山东莱克科技有限公司')
@@ -1680,12 +1727,13 @@
       var baojieLink = (factory === '宝捷' || factory === '江苏宝捷科技股份有限公司')
         ? '<a class="btn primary" href="./baojie-inventory-empty/baojie-inventory-dashboard.html" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:12px;padding:6px 10px;min-height:auto;">宝捷专属库存</a>'
         : '';
-      return '<div class="factory-card" data-inventory-factory-card="' + escapeHTML(factory) + '"><div><h4>' + escapeHTML(factory) + '</h4>' +
+      return '<div class="factory-card" data-inventory-factory-card="' + escapeHTML(factory) + '"><div><h4>' + escapeHTML(displayName) + '</h4>' +
         '<p>主营：' + escapeHTML(supplier.products || '未填写') + '</p>' +
         '<p>库存型号 ' + stocks.length + ' 个 · 当前库存总数 ' + totalQty + '</p>' +
         '<p>' + escapeHTML(latest ? ('最近更新：订单 ' + (latest.orderNo || '未填') + ' / ' + shortTime(latest.createdAt)) : '暂无库存流水') + '</p>' +
         '</div><div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">' +
         laikeLink + komatsuLink + baojieLink +
+        '<button class="btn" data-inventory-rename-factory="' + escapeHTML(factory) + '" type="button" style="font-size:12px;padding:4px 10px;min-height:auto;">改库存抬头</button>' +
         (stocks.length
           ? '<span style="display:inline-block;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:600;background:#2A9D8F;color:#fff;border:1px solid #2A9D8F;box-shadow:0 2px 6px rgba(42,157,143,0.25);">查看库存</span>'
           : '<span style="display:inline-block;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:500;background:#E5E7EB;color:#9CA3AF;border:1px solid #D1D5DB;">暂无库存</span>') +
@@ -1916,6 +1964,12 @@
         renderFactoryInventoryPanel();
       });
     });
+    body.querySelectorAll('[data-inventory-rename-factory]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        renameInventoryDisplay(btn.getAttribute('data-inventory-rename-factory'));
+      });
+    });
     // 【库存汇总迭代新增】绑定汇总板块事件
     bindInventorySummaryControls();
   }
@@ -2056,7 +2110,7 @@
 
   function confirmFactoryInventoryUpload(parsed, fileName) {
     try {
-      var factory = selectedFactory;
+      var factory = inventoryDataKey(selectedFactory);
       if (!factory) { toast('请先选择工厂'); return; }
       state.factoryInventory = state.factoryInventory && typeof state.factoryInventory === 'object' ? state.factoryInventory : {};
       state.factoryInventoryMovements = Array.isArray(state.factoryInventoryMovements) ? state.factoryInventoryMovements : [];
@@ -2102,13 +2156,14 @@
   }
 
   function renderFactoryManagedInventoryHTML(factory) {
-    var inventoryMap = state.factoryInventory && state.factoryInventory[factory] ? state.factoryInventory[factory] : {};
+    var invKey = inventoryDataKey(factory);
+    var inventoryMap = state.factoryInventory && state.factoryInventory[invKey] ? state.factoryInventory[invKey] : {};
     var stocks = Object.keys(inventoryMap).map(function (gy) { return inventoryMap[gy]; }).sort(function (a, b) {
       return String(a.gyModel || '').localeCompare(String(b.gyModel || ''));
     });
-    var movements = (state.factoryInventoryMovements || []).filter(function (m) { return m.factory === factory; }).slice(0, 20);
+    var movements = (state.factoryInventoryMovements || []).filter(function (m) { return m.factory === invKey; }).slice(0, 20);
     var totalQty = stocks.reduce(function (sum, item) { return sum + Number(item.qty || 0); }, 0);
-    var currentOrderNo = factoryLatestPurchaseOrderNo(factory);
+    var currentOrderNo = factoryLatestPurchaseOrderNo(invKey);
     var laikeDedicatedLink = (factory === '莱克' || factory === '山东莱克科技有限公司')
       ? '<a class="btn primary" href="./laike-inventory-dashboard/laike-inventory-dashboard.html" target="_blank" rel="noopener">莱克专属库存</a>'
       : '';
@@ -2125,7 +2180,7 @@
       '<div class="quick-feedback" id="factoryInventoryUploadPreview" style="display:none;"></div>' +
       '</div></div>';
     var stockRows = stocks.map(function (item) {
-      var latest = factoryLatestInventoryMovement(factory, item.gyModel);
+      var latest = factoryLatestInventoryMovement(invKey, item.gyModel);
       return '<tr>' +
         '<td>' + escapeHTML((latest && latest.orderNo) || item.orderNo || '') + '</td>' +
         '<td>' + escapeHTML(item.gyModel || '') + '</td>' +
@@ -2189,7 +2244,7 @@
         var gy = btn.getAttribute('data-inventory-deduct-btn') || '';
         var input = body.querySelector('[data-inventory-deduct-gy="' + gy.replace(/"/g, '\\"') + '"]');
         var qty = input ? parseNumberLike(input.value) : 0;
-        deductFactoryInventoryItem(selectedFactory, gy, qty, '手动扣减', '');
+        deductFactoryInventoryItem(inventoryDataKey(selectedFactory), gy, qty, '手动扣减', '');
       });
     });
     body.querySelectorAll('[data-undo-deduction]').forEach(function (btn) {
@@ -5687,7 +5742,7 @@
 
   function applyPurchaseOrderInventoryReceipt(group, record, fileName) {
     // Excel确认后才自动入库；PDF导入不会调用此函数。
-    var factory = group.supplier || '';
+    var factory = inventoryDataKey(group.supplier || '');
     if (!factory) return 0;
     state.factoryInventory = state.factoryInventory && typeof state.factoryInventory === 'object' ? state.factoryInventory : {};
     state.factoryInventoryMovements = Array.isArray(state.factoryInventoryMovements) ? state.factoryInventoryMovements : [];
@@ -5761,7 +5816,7 @@
   }
 
   function deductCurrentOrderInventory() {
-    var factory = selectedFactory || '';
+    var factory = inventoryDataKey(selectedFactory || '');
     var orderNo = factoryLatestPurchaseOrderNo(factory);
     if (!factory || !orderNo) {
       toast('当前工厂暂无可扣减的订单库存');
@@ -5915,7 +5970,7 @@
   }
 
   function deleteOrderInventory() {
-    var factory = selectedFactory || '';
+    var factory = inventoryDataKey(selectedFactory || '');
     if (!factory) { toast('请先选择工厂'); return; }
     var orderNos = getOrderNoOptionsForFactory(factory);
     if (!orderNos.length) {
@@ -5975,7 +6030,7 @@
   }
 
   function exportFactoryRemainingInventory() {
-    var factory = selectedFactory || '';
+    var factory = inventoryDataKey(selectedFactory || '');
     var inventory = state.factoryInventory || {};
     var rows = [];
     Object.keys(inventory).forEach(function (factoryName) {
@@ -5984,7 +6039,7 @@
         var item = inventory[factoryName][gy];
         if (!item || Number(item.qty || 0) <= 0) return;
         rows.push({
-          工厂: factoryName,
+          工厂: inventoryDisplayName(factoryName),
           订单号: item.orderNo || '',
           GY型号: item.gyModel || gy,
           品名: item.productName || '',
@@ -7148,7 +7203,7 @@
   }
 
   function exportFactoryInventoryBackup() {
-    var factory = selectedFactory || '';
+    var factory = inventoryDataKey(selectedFactory || '');
     var stocks = factoryInventoryStockRows(factory);
     var movements = factoryInventoryMovementRows(factory);
     if (!stocks.length && !movements.length) {
