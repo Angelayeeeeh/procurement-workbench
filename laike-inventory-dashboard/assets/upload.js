@@ -1083,6 +1083,8 @@
       return;
     }
     var hasShipCol = keys.some(function(k) { return infoMap[k].ship !== null; });
+    /* 先合并历史重复行，避免同一订单号+型号被写两遍 */
+    mergeDuplicateRows(data);
     var matched = 0, priceChanged = 0, shipChanged = 0, hit = {};
     data.rows.forEach(function(r) {
       var key = String(r.订单号 || '') + '|' + String(r.SKU编码 || '');
@@ -1361,7 +1363,33 @@
     }
   }
 
+  /* 合并历史遗留的完全重复行（同一 品类+订单号+SKU 被拆成多行） */
+  function mergeDuplicateRows(data) {
+    var seen = {};
+    var out = [];
+    var merged = 0;
+    (data.rows || []).forEach(function(r) {
+      var key = String(r.品类 || '') + '|' + String(r.订单号 || '') + '|' + String(r.SKU编码 || '');
+      var hit = seen[key];
+      if (hit) {
+        hit.工厂总订单 = Number(hit.工厂总订单 || 0) + Number(r.工厂总订单 || 0);
+        hit.已发货数量 = Number(hit.已发货数量 || 0) + Number(r.已发货数量 || 0);
+        hit.总金额 = Number(hit.总金额 || 0) + Number(r.总金额 || 0);
+        hit.订单原始行数 = Number(hit.订单原始行数 || 0) + Number(r.订单原始行数 || 0);
+        if ((!hit.单价 || hit.单价 === 0) && r.单价) hit.单价 = r.单价;
+        if (!hit.产品名称 && r.产品名称) hit.产品名称 = r.产品名称;
+        merged++;
+        return;
+      }
+      seen[key] = r;
+      out.push(r);
+    });
+    if (merged) data.rows = out;
+    return merged;
+  }
+
   function rebuildSummaries(data) {
+    mergeDuplicateRows(data);
     data.rows.forEach(function(r) {
       r.工厂剩余数量 = r.工厂总订单 - r.已发货数量;
       r.发货进度 = r.工厂总订单 > 0 ? r.已发货数量 / r.工厂总订单 : 0;
