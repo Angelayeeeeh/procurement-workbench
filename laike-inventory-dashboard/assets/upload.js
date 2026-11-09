@@ -921,7 +921,7 @@
     }
     var noCatCount = rows.filter(function(r) { return !r.品类; }).length;
     var submitDisabled = !rows.length || noCatCount > 0;
-    var hint = noCatCount > 0 ? '有 <strong>' + noCatCount + '</strong> 行未选择品类，请选择品类后再提交' : '可先修改或删除错误行；确认提交后只追加或累计，不覆盖历史订单';
+    var hint = noCatCount > 0 ? '有 <strong>' + noCatCount + '</strong> 行未选择品类，请选择品类后再提交' : '「确认提交」= 累加到已有订单；「以本次上传为准」= 整表覆盖，品类/数量以本次表格为准，已发货数量自动保留';
     var autoCatHtml = state.autoCategory ?
       '<span style="margin-right:12px;font-size:13px;color:var(--accent)">从文件名识别到品类：<strong>' + esc(state.autoCategory) + '</strong></span>' +
       '<button type="button" class="btn-primary" id="autoFillCatBtn" style="padding:4px 12px;font-size:13px">一键填充所有行</button>' +
@@ -931,11 +931,13 @@
     html += '<div class="update-bar">' +
       (autoCatHtml ? '<div style="margin-bottom:8px">' + autoCatHtml + '</div>' : '') +
       '<button class="btn-primary" id="applyOrderBtn"' + (submitDisabled ? ' disabled' : '') + '>确认提交新增订单</button>' +
+      '<button class="btn-primary" id="rebuildOrderBtn"' + (submitDisabled ? ' disabled' : '') + ' style="background:#c2410c;border-color:#c2410c;margin-left:8px;">以本次上传为准（覆盖订单）</button>' +
       '<button id="cancelUpdateBtn">取消</button>' +
       '<span class="hint">' + hint + '</span>' +
       '</div>';
     showPreview('ok', html);
     document.getElementById('applyOrderBtn').addEventListener('click', function() { applyOrderUpdate(); });
+    document.getElementById('rebuildOrderBtn').addEventListener('click', function() { applyOrderRebuild(); });
     document.getElementById('cancelUpdateBtn').addEventListener('click', clearPreview);
     var autoFillBtn = document.getElementById('autoFillCatBtn');
     if (autoFillBtn) {
@@ -1048,6 +1050,123 @@
     showPreview('success', '<div class="preview-header"><h3>订单追加完成，待一键保存</h3><p>已将上传的订单数据累计到现有数据，已发货数量保持不变。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方“一键保存”。' : '注意：本地暂存失败，请不要关闭页面，先联系处理。') + '</p></div>');
     setSaveStatus('已有新订单更新，待一键保存', 'bad');
     setTimeout(clearPreview, 5000);
+  }
+
+  /* 以本次上传为准：整表覆盖订单数据，已发货等状态按「订单号+SKU」保留 */
+  function applyOrderRebuild() {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    var previewRows = state.orderPreviewRows || [];
+    if (!previewRows.length) return;
+    var noCat = previewRows.filter(function(r) { return !r.品类; });
+    if (noCat.length) {
+      showPreview('error', '有 ' + noCat.length + ' 行未选择品类，请选择品类后再提交。');
+      return;
+    }
+    var ok = window.confirm(
+      '确认「以本次上传为准」覆盖订单数据？\n\n' +
+      '· 现有订单行将被本次上传的表格整体替换（旧订单行全部清除）\n' +
+      '· 已发货数量 / 出货次数 / 最晚发货 / 出货去向 会按「订单号 + SKU」自动保留\n' +
+      '· 品类、数量、单价、总金额全部以本次上传为准\n' +
+      '· 出货流水、未匹配记录、导出记录保持不变\n\n' +
+      '覆盖前会自动留存一份快照，可在完成后点「撤销本次覆盖」恢复。'
+    );
+    if (!ok) return;
+
+    /* 1. 汇总旧的发货状态，按 订单号|SKU 建立索引 */
+    var shipMap = {};
+    (data.rows || []).forEach(function(r) {
+      var key = String(r.订单号 || '') + '|' + String(r.SKU编码 || '');
+      if (!shipMap[key]) shipMap[key] = { 已发货数量: 0, 出货次数: 0, 最晚发货: '', 出货去向: '' };
+      var s = shipMap[key];
+      s.已发货数量 += Number(r.已发货数量 || 0);
+      s.出货次数 += Number(r.出货次数 || 0);
+      s.最晚发货 = latestDate(s.最晚发货, r.最晚发货 ? [r.最晚发货] : []);
+      if (String(r.出货去向 || '').length > s.出货去向.length) s.出货去向 = String(r.出货去向 || '');
+    });
+
+    /* 2. 覆盖前留快照 */
+    try {
+      localStorage.setItem('laike_inventory_dashboard_pre_rebuild_v1', JSON.stringify(data));
+    } catch (e) {}
+
+    /* 3. 按 品类|订单号|SKU 归并本次上传行 */
+    var grouped = {};
+    previewRows.forEach(function(o) {
+      if (!o.订单号 && !o.SKU编码 && !parseNumberLike(o.数量)) return;
+      var key = o.品类 + '|' + o.订单号 + '|' + o.SKU编码;
+      if (!grouped[key]) grouped[key] = { 品类: o.品类, 订单号: o.订单号, 订单日期: o.订单日期, SKU编码: o.SKU编码, 型号: o.型号, 品名: o.品名, 产品名称: o.品名, 数量: 0, 单价: o.单价, 总金额: 0, 客户: o.客户, 抬头: o.抬头, 工厂: o.工厂, 单位: o.单位, 行数: 0 };
+      grouped[key].数量 += parseNumberLike(o.数量);
+      grouped[key].总金额 += parseNumberLike(o.总金额);
+      grouped[key].行数++;
+    });
+
+    /* 4. 生成新的订单行 */
+    var newRows = [];
+    Object.values(grouped).forEach(function(g) {
+      var shipKey = String(g.订单号 || '') + '|' + String(g.SKU编码 || '');
+      var ship = shipMap[shipKey];
+      if (ship) delete shipMap[shipKey];
+      var shipped = ship ? ship.已发货数量 : 0;
+      var total = g.数量;
+      newRows.push({
+        品类: g.品类,
+        工厂: g.工厂,
+        订单号: g.订单号,
+        订单日期: g.订单日期,
+        SKU编码: g.SKU编码,
+        型号: g.型号,
+        产品名称: g.产品名称,
+        品名: g.品名,
+        客户: g.客户,
+        抬头: g.抬头,
+        单位: g.单位,
+        单价: g.单价,
+        总金额: g.总金额,
+        工厂总订单: total,
+        已发货数量: shipped,
+        工厂剩余数量: total - shipped,
+        发货进度: total > 0 ? shipped / total : 0,
+        状态: shipped <= 0 ? '待发货' : shipped > total ? '超发异常' : shipped >= total ? '全部发完' : '部分发货',
+        出货次数: ship ? ship.出货次数 : 0,
+        最晚发货: ship ? ship.最晚发货 : '',
+        出货去向: ship ? ship.出货去向 : '',
+        订单原始行数: g.行数
+      });
+    });
+
+    data.rows = newRows;
+    data.meta.orderSource = state.orderPreviewFileName || state.orderFileName || '用户重新上传订单表（覆盖）';
+    data.meta.orderRows = previewRows.length;
+    data.meta.generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    rebuildSummaries(data);
+    window.LAIKE_APP.refresh();
+    clearPreview();
+    state.orderPreviewRows = [];
+    setSaveStatus('订单已按本次上传覆盖重建，待一键保存', 'bad');
+    showPreview('success', '<div class="preview-header"><h3>订单已按本次上传覆盖重建</h3>' +
+      '<p>共重建 <strong>' + newRows.length + '</strong> 个「品类+订单号+SKU」行，品类与数量全部以本次上传为准，已发货数量已按订单号+SKU 自动保留。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。</p>' +
+      '<p>当前只是页面数据，请点击顶部「一键保存」写入本地浏览器。</p>' +
+      '<p><button class="btn-primary" id="restorePreRebuildBtn" type="button">撤销本次覆盖</button></p></div>');
+    var restoreBtn = document.getElementById('restorePreRebuildBtn');
+    if (restoreBtn) restoreBtn.addEventListener('click', restorePreRebuildData);
+  }
+
+  function restorePreRebuildData() {
+    var raw = null;
+    try { raw = localStorage.getItem('laike_inventory_dashboard_pre_rebuild_v1'); } catch (e) {}
+    if (!raw) {
+      showPreview('error', '未找到覆盖前的快照，无法撤销。');
+      return;
+    }
+    try {
+      window.LAIKE_DASHBOARD_DATA = JSON.parse(raw);
+      window.LAIKE_APP.refresh();
+      clearPreview();
+      setSaveStatus('已恢复到覆盖前的订单数据，请确认后点击「一键保存」', 'bad');
+      showPreview('success', '<div class="preview-header"><h3>已恢复到覆盖前的订单数据</h3><p>当前只是页面数据，请点击顶部「一键保存」写入本地浏览器。如果不想要这次恢复，刷新页面即可回到覆盖后的数据。</p></div>');
+    } catch (err) {
+      showPreview('error', '恢复失败：' + (err && err.message ? err.message : err));
+    }
   }
 
   function rebuildSummaries(data) {
