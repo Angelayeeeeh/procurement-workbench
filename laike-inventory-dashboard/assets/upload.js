@@ -184,6 +184,7 @@
     cols.entity = findCol(headers, ['抬头']);
     cols.factory = findCol(headers, ['工厂']);
     cols.unit = findCol(headers, ['单位']);
+    cols.shipQty = findCol(headers, ['已发货数量', '出库数量', '出货数量', '本次已发货数量']);
     return cols;
   }
 
@@ -820,7 +821,8 @@
           客户: cols.customer >= 0 ? String(r[cols.customer] || '').trim() : '',
           抬头: cols.entity >= 0 ? String(r[cols.entity] || '').trim() : '',
           工厂: cols.factory >= 0 ? String(r[cols.factory] || '').trim() : '莱克',
-          单位: cols.unit >= 0 ? String(r[cols.unit] || '').trim() : ''
+          单位: cols.unit >= 0 ? String(r[cols.unit] || '').trim() : '',
+          已发货数量: cols.shipQty >= 0 ? parseNumberLike(r[cols.shipQty]) : null
         });
       }
       if (!parsed.length) {
@@ -863,6 +865,7 @@
         抬头: o.抬头,
         工厂: o.工厂 || '莱克',
         单位: o.单位,
+        已发货数量: (o.已发货数量 === null || o.已发货数量 === undefined) ? null : parseNumberLike(o.已发货数量),
         行数: 1
       };
     });
@@ -933,6 +936,7 @@
       '<button class="btn-primary" id="applyOrderBtn"' + (submitDisabled ? ' disabled' : '') + '>确认提交新增订单</button>' +
       '<button class="btn-primary" id="categoryOnlyBtn"' + (submitDisabled ? ' disabled' : '') + ' style="background:#0f766e;border-color:#0f766e;margin-left:8px;">只改品类（不动库存）</button>' +
       '<button class="btn-primary" id="priceOnlyBtn"' + (submitDisabled ? ' disabled' : '') + ' style="background:#7c3aed;border-color:#7c3aed;margin-left:8px;">只更新单价（按订单号）</button>' +
+      '<button class="btn-primary" id="reconcileBtn"' + (submitDisabled ? ' disabled' : '') + ' style="background:#b45309;border-color:#b45309;margin-left:8px;">按表格校准（单价+已发货）</button>' +
       '<button class="btn-primary" id="rebuildOrderBtn"' + (submitDisabled ? ' disabled' : '') + ' style="background:#c2410c;border-color:#c2410c;margin-left:8px;">以本次上传为准（覆盖订单）</button>' +
       '<button id="cancelUpdateBtn">取消</button>' +
       '<span class="hint">' + hint + '</span>' +
@@ -941,6 +945,7 @@
     document.getElementById('applyOrderBtn').addEventListener('click', function() { applyOrderUpdate(); });
     document.getElementById('categoryOnlyBtn').addEventListener('click', function() { applyOrderCategoryOnly(); });
     document.getElementById('priceOnlyBtn').addEventListener('click', function() { applyOrderPriceOnly(); });
+    document.getElementById('reconcileBtn').addEventListener('click', function() { applyOrderReconcile(); });
     document.getElementById('rebuildOrderBtn').addEventListener('click', function() { applyOrderRebuild(); });
     document.getElementById('cancelUpdateBtn').addEventListener('click', clearPreview);
     var autoFillBtn = document.getElementById('autoFillCatBtn');
@@ -1054,6 +1059,72 @@
     showPreview('success', '<div class="preview-header"><h3>订单追加完成，待一键保存</h3><p>已将上传的订单数据累计到现有数据，已发货数量保持不变。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方“一键保存”。' : '注意：本地暂存失败，请不要关闭页面，先联系处理。') + '</p></div>');
     setSaveStatus('已有新订单更新，待一键保存', 'bad');
     setTimeout(clearPreview, 5000);
+  }
+
+  /* 按表格校准：逐行按「订单号+型号」更新单价 和 已发货数量，不改工厂总订单，不碰出货流水 */
+  function applyOrderReconcile() {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    var previewRows = state.orderPreviewRows || [];
+    if (!previewRows.length) return;
+    var infoMap = {};
+    previewRows.forEach(function(o) {
+      var key = String(o.订单号 || '') + '|' + String(o.SKU编码 || '');
+      var p = parseNumberLike(o.单价);
+      var hasShip = !(o.已发货数量 === null || o.已发货数量 === undefined || o.已发货数量 === '');
+      if (!infoMap[key]) infoMap[key] = { price: 0, ship: null };
+      if (p > 0) infoMap[key].price = p;
+      if (hasShip) infoMap[key].ship = parseNumberLike(o.已发货数量);
+    });
+    var keys = Object.keys(infoMap).filter(function(k) {
+      return infoMap[k].price > 0 || infoMap[k].ship !== null;
+    });
+    if (!keys.length) {
+      showPreview('error', '本次上传文件里既没有「单价」也没有「已发货数量/出库数量」列，无法校准。');
+      return;
+    }
+    var hasShipCol = keys.some(function(k) { return infoMap[k].ship !== null; });
+    var matched = 0, priceChanged = 0, shipChanged = 0, hit = {};
+    data.rows.forEach(function(r) {
+      var key = String(r.订单号 || '') + '|' + String(r.SKU编码 || '');
+      var info = infoMap[key];
+      if (!info) return;
+      hit[key] = true;
+      matched++;
+      if (info.price > 0 && Math.abs(Number(r.单价 || 0) - info.price) > 0.0001) {
+        r.单价 = info.price;
+        priceChanged++;
+      }
+      if (info.ship !== null && Math.abs(Number(r.已发货数量 || 0) - info.ship) > 0.0001) {
+        r.已发货数量 = info.ship;
+        shipChanged++;
+      }
+    });
+    var missing = keys.filter(function(k) { return !hit[k]; });
+    if (!matched) {
+      showPreview('error', '上传表的「订单号+型号」在系统里一条都没匹配上，未做任何修改。');
+      return;
+    }
+    var ok = window.confirm(
+      '确认按本次上传校准？\n\n' +
+      '· 按「订单号 + 型号(GY号)」逐行对应\n' +
+      '· 单价 = 表里该行自己的成本单价\n' +
+      (hasShipCol ? '· 已发货数量 = 表里该行的「出库数量」\n' : '· 表中未包含已发货数量列，本次只校准单价\n') +
+      '· 工厂总订单数量不变，出货流水不变\n' +
+      '· 剩余数量 = 工厂总订单 - 已发货数量，会自动重算\n\n' +
+      '将匹配 ' + matched + ' 行，其中单价改动 ' + priceChanged + ' 行，已发货数量改动 ' + shipChanged + ' 行。'
+    );
+    if (!ok) return;
+    data.meta.generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    rebuildSummaries(data);
+    window.LAIKE_APP.refresh();
+    clearPreview();
+    state.orderPreviewRows = [];
+    setSaveStatus('已按表格校准单价与已发货数量，待一键保存', 'bad');
+    var msg = '<div class="preview-header"><h3>校准完成（工厂总订单未改动）</h3>' +
+      '<p>匹配到 <strong>' + matched + '</strong> 行；单价改动 <strong>' + priceChanged + '</strong> 行，已发货数量改动 <strong>' + shipChanged + '</strong> 行。剩余数量已按「工厂总订单 − 已发货数量」重新计算。</p>';
+    if (missing.length) msg += '<p>有 <strong>' + missing.length + '</strong> 个「订单号+型号」在系统中不存在，已跳过。</p>';
+    msg += '<p>当前只是页面数据，请点击顶部「一键保存」写入本地浏览器。</p></div>';
+    showPreview('success', msg);
   }
 
   /* 仅按订单号+SKU 更新单价：数量/已发货/剩余数量/出货流水 一律不动 */
