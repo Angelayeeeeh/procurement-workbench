@@ -921,7 +921,7 @@
     }
     var noCatCount = rows.filter(function(r) { return !r.品类; }).length;
     var submitDisabled = !rows.length || noCatCount > 0;
-    var hint = noCatCount > 0 ? '有 <strong>' + noCatCount + '</strong> 行未选择品类，请选择品类后再提交' : '「确认提交」= 累加到已有订单；「以本次上传为准」= 整表覆盖，品类/数量以本次表格为准，已发货数量自动保留';
+    var hint = noCatCount > 0 ? '有 <strong>' + noCatCount + '</strong> 行未选择品类，请选择品类后再提交' : '「只改品类」= 仅按订单号+SKU 修正品类，数量/已发货/剩余库存完全不动；「确认提交」= 累加；「以本次上传为准」= 整表覆盖';
     var autoCatHtml = state.autoCategory ?
       '<span style="margin-right:12px;font-size:13px;color:var(--accent)">从文件名识别到品类：<strong>' + esc(state.autoCategory) + '</strong></span>' +
       '<button type="button" class="btn-primary" id="autoFillCatBtn" style="padding:4px 12px;font-size:13px">一键填充所有行</button>' +
@@ -931,12 +931,14 @@
     html += '<div class="update-bar">' +
       (autoCatHtml ? '<div style="margin-bottom:8px">' + autoCatHtml + '</div>' : '') +
       '<button class="btn-primary" id="applyOrderBtn"' + (submitDisabled ? ' disabled' : '') + '>确认提交新增订单</button>' +
+      '<button class="btn-primary" id="categoryOnlyBtn"' + (submitDisabled ? ' disabled' : '') + ' style="background:#0f766e;border-color:#0f766e;margin-left:8px;">只改品类（不动库存）</button>' +
       '<button class="btn-primary" id="rebuildOrderBtn"' + (submitDisabled ? ' disabled' : '') + ' style="background:#c2410c;border-color:#c2410c;margin-left:8px;">以本次上传为准（覆盖订单）</button>' +
       '<button id="cancelUpdateBtn">取消</button>' +
       '<span class="hint">' + hint + '</span>' +
       '</div>';
     showPreview('ok', html);
     document.getElementById('applyOrderBtn').addEventListener('click', function() { applyOrderUpdate(); });
+    document.getElementById('categoryOnlyBtn').addEventListener('click', function() { applyOrderCategoryOnly(); });
     document.getElementById('rebuildOrderBtn').addEventListener('click', function() { applyOrderRebuild(); });
     document.getElementById('cancelUpdateBtn').addEventListener('click', clearPreview);
     var autoFillBtn = document.getElementById('autoFillCatBtn');
@@ -1050,6 +1052,64 @@
     showPreview('success', '<div class="preview-header"><h3>订单追加完成，待一键保存</h3><p>已将上传的订单数据累计到现有数据，已发货数量保持不变。工厂总订单 <strong>' + num(data.summary.工厂总订单) + '</strong>，已发货 <strong>' + num(data.summary.已发货数量) + '</strong>，工厂剩余 <strong>' + num(data.summary.工厂剩余数量) + '</strong>。' + (saved ? '当前浏览器已暂存，请点击下方“一键保存”。' : '注意：本地暂存失败，请不要关闭页面，先联系处理。') + '</p></div>');
     setSaveStatus('已有新订单更新，待一键保存', 'bad');
     setTimeout(clearPreview, 5000);
+  }
+
+  /* 仅修正品类：只改现有订单行的品类，数量/已发货/剩余库存一律不动 */
+  function applyOrderCategoryOnly() {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    var previewRows = state.orderPreviewRows || [];
+    if (!previewRows.length) return;
+    var noCat = previewRows.filter(function(r) { return !r.品类; });
+    if (noCat.length) {
+      showPreview('error', '有 ' + noCat.length + ' 行未选择品类，请选择品类后再提交。');
+      return;
+    }
+    var catMap = {};
+    var conflict = 0;
+    previewRows.forEach(function(o) {
+      var key = String(o.订单号 || '') + '|' + String(o.SKU编码 || '');
+      if (!catMap[key]) catMap[key] = o.品类;
+      else if (catMap[key] !== o.品类) conflict++;
+    });
+    var changed = 0;
+    var matched = 0;
+    var hit = {};
+    data.rows.forEach(function(r) {
+      var key = String(r.订单号 || '') + '|' + String(r.SKU编码 || '');
+      var cat = catMap[key];
+      if (!cat) return;
+      hit[key] = true;
+      matched++;
+      if (r.品类 !== cat) {
+        r.品类 = cat;
+        changed++;
+      }
+    });
+    var missingKeys = Object.keys(catMap).filter(function(k) { return !hit[k]; });
+    if (!matched) {
+      showPreview('error', '上传表中的「订单号+SKU」在系统里一条都没匹配上，未做任何修改。请确认订单号的格式与系统一致。');
+      return;
+    }
+    var ok = window.confirm(
+      '确认只修改品类？\n\n' +
+      '· 只改现有订单行的「品类」字段\n' +
+      '· 工厂总订单、已发货数量、工厂剩余数量、单价、金额 全部保持不变\n' +
+      '· 不新增订单行，不删除订单行\n\n' +
+      '将匹配 ' + matched + ' 行，其中 ' + changed + ' 行品类会被修改。'
+    );
+    if (!ok) return;
+    data.meta.generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    rebuildSummaries(data);
+    window.LAIKE_APP.refresh();
+    clearPreview();
+    state.orderPreviewRows = [];
+    setSaveStatus('品类已修正，待一键保存', 'bad');
+    var msg = '<div class="preview-header"><h3>品类修改完成（库存未改动）</h3>' +
+      '<p>匹配到 <strong>' + matched + '</strong> 行，其中 <strong>' + changed + '</strong> 行品类已改为本次上传的值。工厂总订单、已发货数量、工厂剩余数量、单价、金额均未改动。</p>';
+    if (missingKeys.length) msg += '<p>另有 <strong>' + missingKeys.length + '</strong> 个「订单号+SKU」在系统中不存在，已跳过（不会新增行）。</p>';
+    if (conflict) msg += '<p>提示：上传表中 <strong>' + conflict + '</strong> 行存在同一订单号+SKU对应多个品类的情况，已按第一条为准。</p>';
+    msg += '<p>当前只是页面数据，请点击顶部「一键保存」写入本地浏览器。</p></div>';
+    showPreview('success', msg);
   }
 
   /* 以本次上传为准：整表覆盖订单数据，已发货等状态按「订单号+SKU」保留 */
