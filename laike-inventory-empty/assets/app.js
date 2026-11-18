@@ -342,6 +342,7 @@
     renderDetails();
     renderSimpleTables();
     bindExportShipFlow();
+    bindExportOrderSkuDetail();
     if (window.LAIKE_CHARTS && window.LAIKE_CHARTS.refresh) {
       window.LAIKE_CHARTS.refresh();
     }
@@ -434,6 +435,103 @@
     };
     s.onerror = function() { alert('XLSX库加载失败，请检查网络后重试'); };
     document.head.appendChild(s);
+  }
+
+  /* ===== 按订单号为基准导出 SKU 明细（每个订单号下各型号 总订单/已出货/剩余） ===== */
+  function bindExportOrderSkuDetail() {
+    var btn = document.getElementById('exportOrderSkuDetailBtn');
+    if (!btn) return;
+    btn.onclick = exportOrderSkuDetailToExcel;
+  }
+
+  function exportOrderSkuDetailToExcel() {
+    var data = window.LAIKE_DASHBOARD_DATA;
+    if (!data || !(data.rows || []).length) {
+      alert('暂无订单数据，请先上传订单表');
+      return;
+    }
+    if (!window.XLSX) {
+      alert('Excel 库未加载，请强制刷新页面后重试');
+      return;
+    }
+    var sortedRows = (data.rows || []).slice().sort(function(a, b) {
+      var ca = String(a.品类 || ''), cb = String(b.品类 || '');
+      if (ca !== cb) return ca < cb ? -1 : 1;
+      var oa = String(a.订单号 || ''), ob = String(b.订单号 || '');
+      if (oa !== ob) return oa < ob ? -1 : 1;
+      var sa = String(a.SKU编码 || ''), sb = String(b.SKU编码 || '');
+      if (sa !== sb) return sa < sb ? -1 : 1;
+      return 0;
+    });
+
+    /* Sheet1：订单SKU明细，按订单号分组并带小计 */
+    var detailRows = [['品类', '工厂', '订单号', 'SKU编码(GY型号)', '产品名称', '总订单数量', '已出货数量', '剩余数量', '状态']];
+    var grand = { 总订单: 0, 已出货: 0, 剩余: 0 };
+    var currentOrder = null;
+    var orderSub = { 总订单: 0, 已出货: 0, 剩余: 0 };
+
+    sortedRows.forEach(function(r) {
+      var orderKey = String(r.品类 || '') + '|' + String(r.订单号 || '');
+      if (currentOrder && orderKey !== currentOrder) {
+        detailRows.push(['', '', '', '', '订单小计', orderSub.总订单, orderSub.已出货, orderSub.剩余, '']);
+        detailRows.push([]);
+        orderSub = { 总订单: 0, 已出货: 0, 剩余: 0 };
+      }
+      currentOrder = orderKey;
+      var t = Number(r.工厂总订单 || 0);
+      var s = Number(r.已发货数量 || 0);
+      var rem = Number(r.工厂剩余数量 != null ? r.工厂剩余数量 : t - s);
+      grand.总订单 += t; grand.已出货 += s; grand.剩余 += rem;
+      orderSub.总订单 += t; orderSub.已出货 += s; orderSub.剩余 += rem;
+      detailRows.push([
+        r.品类 || '', r.工厂 || '', r.订单号 || '', r.SKU编码 || '', r.产品名称 || r.品名 || '',
+        t, s, rem, r.状态 || ''
+      ]);
+    });
+    if (currentOrder) {
+      detailRows.push(['', '', '', '', '订单小计', orderSub.总订单, orderSub.已出货, orderSub.剩余, '']);
+    }
+    detailRows.push([]);
+    detailRows.push(['合计', '', '', '', '', grand.总订单, grand.已出货, grand.剩余, '']);
+
+    var ws1 = XLSX.utils.aoa_to_sheet(detailRows);
+    ws1['!cols'] = [
+      { wch: 12 }, { wch: 10 }, { wch: 22 }, { wch: 16 }, { wch: 40 },
+      { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 10 }
+    ];
+
+    /* Sheet2：按订单号汇总，每个订单一行 */
+    var orderMap = {};
+    sortedRows.forEach(function(r) {
+      var key = String(r.品类 || '') + '|' + String(r.订单号 || '');
+      if (!orderMap[key]) {
+        orderMap[key] = { 品类: r.品类 || '', 工厂: r.工厂 || '', 订单号: r.订单号 || '', SKU数: 0, 总订单: 0, 已出货: 0, 剩余: 0 };
+      }
+      orderMap[key].SKU数 += 1;
+      orderMap[key].总订单 += Number(r.工厂总订单 || 0);
+      orderMap[key].已出货 += Number(r.已发货数量 || 0);
+      orderMap[key].剩余 += Number(r.工厂剩余数量 != null ? r.工厂剩余数量 : (Number(r.工厂总订单 || 0) - Number(r.已发货数量 || 0)));
+    });
+    var orderRows = [['品类', '工厂', '订单号', 'SKU型号数', '总订单数量', '已出货数量', '剩余数量']];
+    var orderGrand = { 总订单: 0, 已出货: 0, 剩余: 0 };
+    Object.keys(orderMap).sort().forEach(function(k) {
+      var o = orderMap[k];
+      orderGrand.总订单 += o.总订单;
+      orderGrand.已出货 += o.已出货;
+      orderGrand.剩余 += o.剩余;
+      orderRows.push([o.品类, o.工厂, o.订单号, o.SKU数, o.总订单, o.已出货, o.剩余]);
+    });
+    orderRows.push(['合计', '', '', '', orderGrand.总订单, orderGrand.已出货, orderGrand.剩余]);
+
+    var ws2 = XLSX.utils.aoa_to_sheet(orderRows);
+    ws2['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws1, '订单SKU明细');
+    XLSX.utils.book_append_sheet(wb, ws2, '订单号汇总');
+    var today = new Date();
+    var pad = function(n) { return n < 10 ? '0' + n : n; };
+    XLSX.writeFile(wb, '小松订单SKU明细_' + today.getFullYear() + pad(today.getMonth() + 1) + pad(today.getDate()) + '.xlsx');
   }
 
   [searchInput, statusFilter, categoryFilter].forEach(function(el) {
